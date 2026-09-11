@@ -94,7 +94,6 @@ int main(int argc, char *argv[]) {
     SDL_Surface *icon = SDL_LoadBMP("assets/icon.bmp");
     if (!icon) icon = SDL_LoadBMP("icon.bmp");
     if (!icon) icon = SDL_LoadBMP("../Resources/assets/icon.bmp");
-    if (!icon) icon = SDL_LoadBMP("/home/maec/tetris3/assets/icon.bmp");
     if (icon) {
         SDL_SetWindowIcon(window, icon);
         SDL_FreeSurface(icon);

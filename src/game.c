@@ -527,7 +527,6 @@ void game_reset(Game *g) {
 void game_load_highscore(Game *g) {
     g->highscore = 0;
     FILE *f = fopen("highscore.txt", "r");
-    if (!f) f = fopen("/home/maec/tetris3/highscore.txt", "r");
     if (f) {
         if (fscanf(f, "%u", &g->highscore) != 1) {
             g->highscore = 0;
@@ -538,7 +537,6 @@ void game_load_highscore(Game *g) {
 
 void game_save_highscore(const Game *g) {
     FILE *f = fopen("highscore.txt", "w");
-    if (!f) f = fopen("/home/maec/tetris3/highscore.txt", "w");
     if (f) {
         fprintf(f, "%u\n", g->highscore);
         fclose(f);

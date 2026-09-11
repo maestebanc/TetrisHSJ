@@ -55,7 +55,6 @@ En **Sant Joan Tetris**, cada línea que completas es un ticket absurdo que cons
 ## 🐧 Cómo Jugar en Linux
 
 ```bash
-cd /home/maec/tetris3
 ./sant_joan_tetris
 # o bien:
 ./run.sh
