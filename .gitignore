@@ -1,0 +1,11 @@
+# Archivos temporales y de compilación
+obj/
+*.o
+*.pdb
+
+# Puntuación local persistente
+highscore.txt
+
+# Sistema operativo
+.DS_Store
+Thumbs.db

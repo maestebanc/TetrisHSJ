@@ -1,0 +1,1158 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <title>Sant Joan Tetris - Hospital Universitario de Sant Joan d'Alacant (1080p)</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; user-select: none; }
+    body, html {
+      width: 100%; height: 100%;
+      background: #060c14;
+      color: #f0f8ff;
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      overflow: hidden;
+    }
+    #canvas-container {
+      width: 100vw; height: 100vh;
+      display: flex; justify-content: center; align-items: center;
+      background: #060c14;
+    }
+    canvas {
+      width: 100%;
+      max-width: 1920px;
+      max-height: 1080px;
+      aspect-ratio: 16 / 9;
+      image-rendering: auto;
+      box-shadow: 0 0 40px rgba(0, 235, 255, 0.15);
+    }
+  </style>
+</head>
+<body>
+  <div id="canvas-container">
+    <canvas id="gameCanvas" width="1920" height="1080"></canvas>
+  </div>
+
+  <script>
+    const canvas = document.getElementById('gameCanvas');
+    const ctx = canvas.getContext('2d');
+
+    const WIN_W = 1920;
+    const WIN_H = 1080;
+
+    const PIECE_COLORS = [
+      '#000',
+      '#00ebff', // I - Fibra Urgencias
+      '#2d78ff', // J - Servidor HIS
+      '#ff9114', // L - Radiología PACS
+      '#ffdc14', // O - Telemetría UCI
+      '#19e65a', // S - Farmacia y Lab
+      '#b432fa', // T - Switch Central
+      '#ff2d37'  // Z - Firewall Perimetral
+    ];
+
+    const TETROMINOES = [
+      [],
+      [[[0,0,0,0],[1,1,1,1],[0,0,0,0],[0,0,0,0]],[[0,0,1,0],[0,0,1,0],[0,0,1,0],[0,0,1,0]],[[0,0,0,0],[0,0,0,0],[1,1,1,1],[0,0,0,0]],[[0,1,0,0],[0,1,0,0],[0,1,0,0],[0,1,0,0]]],
+      [[[1,0,0],[1,1,1],[0,0,0]],[[0,1,1],[0,1,0],[0,1,0]],[[0,0,0],[1,1,1],[0,0,1]],[[0,1,0],[0,1,0],[1,1,0]]],
+      [[[0,0,1],[1,1,1],[0,0,0]],[[0,1,0],[0,1,0],[0,1,1]],[[0,0,0],[1,1,1],[1,0,0]],[[1,1,0],[0,1,0],[0,1,0]]],
+      [[[1,1],[1,1]],[[1,1],[1,1]],[[1,1],[1,1]],[[1,1],[1,1]]],
+      [[[0,1,1],[1,1,0],[0,0,0]],[[0,1,0],[0,1,1],[0,0,1]],[[0,0,0],[0,1,1],[1,1,0]],[[1,0,0],[1,1,0],[0,1,0]]],
+      [[[0,1,0],[1,1,1],[0,0,0]],[[0,1,0],[0,1,1],[0,0,0]],[[0,0,0],[1,1,1],[0,1,0]],[[0,1,0],[1,1,0],[0,1,0]]],
+      [[[1,1,0],[0,1,1],[0,0,0]],[[0,0,1],[0,1,1],[0,1,0]],[[0,0,0],[1,1,0],[0,1,1]],[[0,1,0],[1,1,0],[1,0,0]]]
+    ];
+
+    const DEPARTMENTS = [
+      "1. Urgencias y Triaje", "2. Consultas Externas", "3. Hospitalización",
+      "4. Quirófanos y URPA", "5. Cuidados Intensivos (UCI)", "6. Radiología PACS",
+      "7. Laboratorio y Farmacia", "8. HIS Orion Clinic", "9. CPD Central Sant Joan",
+      "10. Guardia Nocturna TIC", "11. Sant Joan 100% Uptime"
+    ];
+
+    // Audio Web Synthesizer
+    let audioCtx = null;
+    let isMuted = false;
+    let masterVol = 0.35;
+    let trackIndex = 0;
+    const TRACK_NAMES = [
+      "Cyber Sant Joan (Synthwave 124 BPM)",
+      "Guardia de Noche - CPD (Techno 136 BPM)",
+      "Ritmo Cardíaco - UCI (Medical Tech 120 BPM)"
+    ];
+
+    function initAudio() {
+      if (!audioCtx) {
+        audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        startMusicLoop();
+      }
+    }
+
+    function playTone(freq, type = 'sine', duration = 0.15, vol = 0.25) {
+      if (!audioCtx || isMuted) return;
+      try {
+        const osc = audioCtx.createOscillator();
+        const gain = audioCtx.createGain();
+        osc.type = type;
+        osc.frequency.setValueAtTime(freq, audioCtx.currentTime);
+        gain.gain.setValueAtTime(vol * masterVol, audioCtx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + duration);
+        osc.connect(gain);
+        gain.connect(audioCtx.destination);
+        osc.start();
+        osc.stop(audioCtx.currentTime + duration);
+      } catch(e) {}
+    }
+
+    let musicStep = 0;
+    function startMusicLoop() {
+      setInterval(() => {
+        if (!audioCtx || isMuted) return;
+        musicStep++;
+        const bassNotes = [55, 55, 65, 55, 73, 55, 82, 73];
+        const freq = bassNotes[musicStep % bassNotes.length];
+        if (musicStep % 2 === 0) playTone(freq, 'sawtooth', 0.12, 0.14);
+        if (musicStep % 4 === 0) playTone(90, 'triangle', 0.16, 0.30);
+        if (musicStep % 4 === 2) playTone(880, 'sine', 0.05, 0.10);
+      }, 120);
+    }
+
+    // Game Logic
+    const BOARD_W = 10;
+    const BOARD_H = 20;
+    let board = Array.from({length: BOARD_H}, () => Array(BOARD_W).fill(0));
+    let bag = [];
+    let currentPiece = 0;
+    let pieceX = 3, pieceY = 0, pieceRot = 0;
+    let holdPiece = 0, canHold = true;
+    let nextQueue = [];
+    let score = 0, lines = 0, level = 1;
+    let highscore = parseInt(localStorage.getItem('santjoan_highscore') || '0');
+    let gameState = 'TITLE';
+    let lastFall = 0;
+    let particles = [];
+    let toastText = "", toastAlpha = 0;
+    let ecgPhase = 0;
+    let shiftStart = Date.now();
+    let lastTickerTime = 0;
+    let piecesDropped = 0;
+
+    const GUARDIAS = ["Jose María", "Marichu", "Diego", "Ernesto"];
+    function getCurrentGuardia() {
+      return GUARDIAS[Math.floor(piecesDropped / 25) % GUARDIAS.length];
+    }
+
+    const GUARDIA_TICKER_TEMPLATES = [
+      "[URGENCIAS 02:45] {G}: Descubrio el cable en 5 segundos.",
+      "[PLANTA 4 03:10] {G}: Arreglo la impresora de golpe.",
+      "[CPD SOTANO 1] {G}: 'Hay cafe, la red esta a salvo.'",
+      "[QUIROFANO 03:35] {G}: Anestesista con pantalla al reves.",
+      "[CONSULTAS 04:20] {G}: Enchufo la regleta que apagaron.",
+      "[TRIAJE 04:50] {G}: 'La de admision te guarda comida.'",
+      "[FARMACIA 05:15] {G}: Desbloqueo 120 recetas del HIS.",
+      "[DIRECCION 05:40] {G}: '¿Podrias sintonizar la tele?'",
+      "[UCI 06:05] {G}: Evito apagar el servidor central.",
+      "[SISTEMAS 06:30] {G}: Script nocturno sin un solo fallo.",
+      "[URGENCIAS 06:50] {G}: '¡Nos has salvado la guardia!'",
+      "[RADIOLOGIA 03:55] {G}: 'El TAC funciona pero hace ruido.'",
+      "[LABORATORIO 04:35] {G}: La centrifuga no tiene Bluetooth.",
+      "[CONSULTAS 05:55] {G}: '¿Si borro el icono borro todo?'",
+      "[SOPORTE 03:20] {G}: '¿Apagar y encender sirve?' (Si).",
+      "[REHAB 02:30] {G}: El raton tenia la tapa puesta.",
+      "[DIALISIS 03:40] {G}: Cable de red pisado por camilla.",
+      "[CPD SOTANO 1] {G}: Cafe caliente para aguantar turno.",
+      "[PLANTA 2 04:15] {G}: Medico con Bloq Mayus activado.",
+      "[ARCHIVOS 04:45] {G}: El informe estaba en Descargas.",
+      "[ADMISION 05:10] {G}: Impresora sin papel en bandeja.",
+      "[QUIROFANO 05:35] {G}: Cable HDMI flojo en pantalla.",
+      "[UCI 05:50] {G}: Sensor optico tapado con celo.",
+      "[URGENCIAS 06:15] {G}: 'Doctor, encienda la pantalla.'",
+      "[FARMACIA 06:35] {G}: Cola de impresion desbloqueada.",
+      "[ANATOMIA 02:15] {G}: 'El microfono no tiene sonido.'",
+      "[PLANTA 1 02:50] {G}: Switch de planta operativo 100%.",
+      "[PLANTA 3 03:25] {G}: Teclado con cafe desatascado.",
+      "[PLANTA 5 04:05] {G}: Cable de red en clavija correcta.",
+      "[CPD SOTANO 1] {G}: Cero incidencias criticas hoy.",
+      "[SISTEMAS 04:30] {G}: Backup de datos completado OK.",
+      "[CONSULTAS 04:55] {G}: '¿Donde esta el boton de enviar?'",
+      "[TRIAJE 05:25] {G}: Impresora lista para el turno.",
+      "[DIRECCION 06:20] {G}: Felicitacion del jefe de servicio.",
+      "[URGENCIAS 06:40] {G}: Aplausos en el cambio de turno."
+    ];
+
+    const GENERAL_TICKER_POOL = [
+      "[URGENCIAS 01:10] Raton bloqueado: Estaba encima de un bocadillo.",
+      "[PLANTA 3 01:18] Pantalla negra: Solucion: Encender la regleta.",
+      "[CONSULTAS 01:25] 'Borre Internet': Solo cerro la pestana de Chrome.",
+      "[QUIROFANO 01:32] Puntero invertido: Alfombrilla y raton al reves.",
+      "[TRIAJE 01:40] Impresora atascada: Metieron radiografia en bandeja.",
+      "[SOPORTE 01:48] '¿Lo reinicio?': Funciono. Doctor anonadado.",
+      "[FARMACIA 01:55] Password erroneo: Bloqueo mayusculas activado.",
+      "[CPD SOTANO 1] 16 grados en sala: Informatico con forro polar.",
+      "[UCI 02:02] Ticket P1 urgente: Quitar pegatina del sensor.",
+      "[RADIOLOGIA 02:12] TAC desconectado: Desenchufado para cargar movil.",
+      "[CAFETERIA 02:20] Alerta en el CPD: 'Error 404: Cafe Not Found.'",
+      "[CONSULTAS 02:28] PC apagado: Tiraron del cable con la silla.",
+      "[SISTEMAS 02:36] Switch perimetral: Uptime de red al 100.00%.",
+      "[ALERTA 02:44] Silencio en CPD: 'Si no tocas nada, aguantamos.'",
+      "[TRIAJE 02:52] Cola de impresion: 50 etiquetas de golpe listas.",
+      "[DIRECCION 03:02] Ticket de guardia: '¿Me instalais el Solitario?'",
+      "[PLANTA 2 03:08] PC no arranca: Estaba enchufado a si mismo.",
+      "[SOPORTE 03:16] Teclado gritando: Escribia en MAYUSCULAS todo.",
+      "[CPD SOTANO 1] Ruido extrano: Era la cafetera pidiendo agua.",
+      "[TRIAJE 03:24] Pantalla apagada: Limpieza desenchufo el SAI.",
+      "[CONSULTAS 03:32] Tecla Intro fija: Cafe derramado sobre teclado.",
+      "[RAYOS X 03:38] 'Red muy lenta': Descargando pelicula en planta.",
+      "[QUIROFANO 03:46] Alarma roja en PC: Solo era actualizacion de Java.",
+      "[UCI 03:54] Aviso de madrugada: '¿Donde se le da a guardar?'",
+      "[PLANTA 5 04:02] Sin conexion a red: Clavija de telefono en el RJ45.",
+      "[LABORATORIO 04:08] Centrifugadora: 'No imprime'. (No es impresora).",
+      "[SISTEMAS 04:16] Copia en cintas: Guardadas en caja ignifuga.",
+      "[URGENCIAS 04:24] Impresora humeando: Metieron 3 paquetes de folios.",
+      "[ADMISION 04:32] 'Se cerro el HIS': Clicaron en la X roja superior.",
+      "[SOPORTE 04:38] Llamada del 112: 'Se ha caido un cuadro en sala.'",
+      "[CONSULTAS 04:46] 'Hay un virus': Era el salvapantallas de peces.",
+      "[REHAB 04:52] Raton no desliza: Plastico protector sin quitar.",
+      "[FARMACIA 04:58] Lector optico: Escaneando el codigo al reves.",
+      "[DIRECCION 05:04] 'Fallo critico': Olvido su PIN de 4 cifras.",
+      "[ANATOMIA 05:12] Peticion al CPD: 'Queremos altavoces con bajos.'",
+      "[URGENCIAS 05:18] 'Sin sonido en PC': Auriculares en toma microfono.",
+      "[SISTEMAS 05:26] Firewall perimetral: Bloqueada estafa del principe.",
+      "[QUIROFANO 05:32] 'Se ve todo azul': Filtro de luz nocturna puesto.",
+      "[PLANTA 1 05:38] Monitor parpadea: Cable VGA suelto y colgando.",
+      "[TRIAJE 05:44] 'No entra tarjeta': Metian la del bonobus urbano.",
+      "[CPD SOTANO 1] Beep de alarma: Era el microondas con la leche.",
+      "[SOPORTE 05:52] 'No toque nada': Toco todos los cables de abajo.",
+      "[URGENCIAS 05:58] Atasco de papel: '¿Habia que quitar las grapas?'",
+      "[CONSULTAS 06:04] 'Se fue la luz': Dio al interruptor con el pie.",
+      "[PLANTA 3 06:12] Ventilador ruidoso: Un folio doblado en la rejilla.",
+      "[SISTEMAS 06:18] Fibra optica: Latencia media 1 milisegundo.",
+      "[URGENCIAS 06:26] Pulsera atascada: Pegatina pegada en el rodillo.",
+      "[ARCHIVOS 06:34] 'Perdi la carpeta': Estaba dentro de la Papelera.",
+      "[QUIROFANO 06:42] 'Huele a tostada': Tostada quemada en descanso.",
+      "[UCI 06:48] 'El Wi-Fi se corta': Estaban en la sala plomada.",
+      "[CPD SOTANO 1] Relevo proximo: Ya se huelen churros y porras.",
+      "[PLANTA 4 01:15] Cuna termica TIC: Sensor de red conectado al SAI.",
+      "[URGENCIAS 01:28] 'El teclado baila': Le faltaba una patilla de goma.",
+      "[CONSULTAS 01:42] Mensaje de error: 'Pulse cualquier tecla'. Dudan.",
+      "[LABORATORIO 01:52] Tubos de ensayo: Codigo de barras doblado.",
+      "[QUIROFANO 02:05] Lampara quirurgica: No lleva Wi-Fi, es mecanica.",
+      "[SOPORTE 02:18] Llamada a las 02 AM: '¿Teneis grapas en el CPD?'",
+      "[FARMACIA 02:32] Nevera de vacunas: Sensor de temperatura: 4C OK.",
+      "[CPD SOTANO 1] Luces verdes rack: El espectaculo visual relaja.",
+      "[TRIAJE 02:48] Pantalla tactil: Limpiada con alcohol, resucito.",
+      "[PLANTA 1 03:05] Cama con motor: 'No sincroniza con el PC.'",
+      "[DIRECCION 03:15] Impresora color: Gastaron el magenta en fotos.",
+      "[RAYOS X 03:30] Consola de mando: Monitor secundario apagado.",
+      "[UCI 03:42] Monitor signos: Cable ethernet bien engastado.",
+      "[PLANTA 2 03:55] Silla de ruedas: Se engancho al cable de red.",
+      "[CONSULTAS 04:12] 'No sale la firma': Tableta digitalizadora al reves.",
+      "[SISTEMAS 04:20] Enlace troncal: 10 Gigabits por segundo OK.",
+      "[URGENCIAS 04:35] PC va muy lento: 48 pestanas abiertas en Chrome.",
+      "[ARCHIVOS 04:48] Lector microfilm: Enchufado a toma sin corriente.",
+      "[QUIROFANO 05:02] Aspirador: No es un dispositivo USB.",
+      "[FARMACIA 05:14] Robot dispensador: Brazo mecanico calibrado.",
+      "[PLANTA 3 05:28] Timbre de cama: 'Creiamos que era el raton.'",
+      "[SOPORTE 05:42] Ticket misterioso: Resuelto antes de ir al box.",
+      "[TRIAJE 05:55] Teclado lavable: Sumergido en agua con jabon.",
+      "[CPD SOTANO 1] Monitor de red: Graficas en verde absoluto.",
+      "[DIALISIS 01:20] 'No carga sesion': No habian iniciado sesion.",
+      "[PLANTA 5 01:38] 'El cursor tiembla': El escritorio cojeaba.",
+      "[REHAB 01:50] Cinta de correr: '¿Se puede conectar al HIS?'",
+      "[ANATOMIA 02:10] Camara microscopio: Tapa del objetivo puesta.",
+      "[URGENCIAS 02:22] Box de paradas: Terminal ligero listo y rapido.",
+      "[CONSULTAS 02:40] Lector DNIe: Tarjeta insertada al reves.",
+      "[QUIROFANO 02:58] Torre laparoscopia: Canal de video bien conmutado.",
+      "[SISTEMAS 03:12] Dominio Windows: Servidor LDAP respondiendo 2ms.",
+      "[UCI 03:35] Bomba de infusion: Transmision de datos perfecta.",
+      "[FARMACIA 03:48] Cajon automatico: Moneda atascada en el carril.",
+      "[PLANTA 2 04:02] 'La pantalla vibra': Ventilador portatil muy cerca.",
+      "[TRIAJE 04:18] Puesto 2 de triaje: Reemplazado cable defectuoso.",
+      "[CPD SOTANO 1] Suelo tecnico: Ningun cable mordido ni roto.",
+      "[RAYOS X 04:32] Resonancia magnetica: Cero interferencias en red.",
+      "[DIRECCION 04:45] Portatil gerencia: Interruptor Wi-Fi apagado.",
+      "[URGENCIAS 05:00] Impresora laser: Folios reciclados con grapas.",
+      "[PLANTA 1 05:15] 'No oigo audio': Auricular con volumen a cero.",
+      "[SOPORTE 05:30] 'Tengo un virus': Solo era un aviso de cookies.",
+      "[QUIROFANO 05:48] Pantalla de signos: Brillo al minimo por error.",
+      "[ARCHIVOS 06:02] Escaner historias: Cristal limpiado de pegamento.",
+      "[PLANTA 4 06:15] Sala de lactancia: Punto de acceso Wi-Fi al 100%.",
+      "[LABORATORIO 06:30] Nevera muestras: Telemetria de grados enviada.",
+      "[SISTEMAS 06:45] Certificados SSL: Renovados a tiempo y validados.",
+      "[CPD SOTANO 1] Cafe de las 06:30: La cafetera merece una estatua.",
+      "[URGENCIAS 06:55] Cambio de guardia: Todos los puestos operativos.",
+      "[CONSULTAS 01:12] Doble clic veloz: Hacia triple clic y cerraba.",
+      "[PLANTA 3 01:30] 'No veo la barra': Barra de tareas auto-oculta.",
+      "[QUIROFANO 01:45] Pedal de electro: Confundido con raton de pie.",
+      "[SOPORTE 02:00] Doctor a las 2 AM: '¿Cual era mi contrasena?'",
+      "[TRIAJE 02:15] 'Faltan folios': Estaban en el cajon de abajo.",
+      "[FARMACIA 02:30] Bote de jarabe: Derramado al lado del raton.",
+      "[CPD SOTANO 1] Termometro CPD: Aire acondicionado a tope.",
+      "[UCI 02:45] Marcapasos monitor: Senal transmitida sin cortes.",
+      "[RADIOLOGIA 03:00] Pantalla DICOM: Calibracion de grises exacta.",
+      "[PLANTA 2 03:18] Toma de corriente: Cargador de cepillo electrico.",
+      "[CONSULTAS 03:30] 'Perdi la cita': Habia minimizado la ventana.",
+      "[URGENCIAS 03:45] Lector de tarjetas: Polvo soplado, lector listo.",
+      "[SISTEMAS 04:00] Router de salida: BGP estable con Conselleria.",
+      "[PLANTA 5 04:15] 'No puedo imprimir': Impresora seleccionada: PDF.",
+      "[LABORATORIO 04:30] Tubo neumatico: El envio llego a destino OK.",
+      "[DIRECCION 04:45] Firma digital: Tarjeta criptografica leida.",
+      "[QUIROFANO 05:00] Monitor anestesia: Reseteado con boton trasero.",
+      "[REHAB 05:15] Aparato de laser: 'No emite Wi-Fi'. (Normal).",
+      "[TRIAJE 05:30] Impresora turnos: Rollo termico colocado bien.",
+      "[ARCHIVOS 05:45] Estanteria rodante: No atranco ningun cable TIC.",
+      "[PLANTA 1 06:00] Olor a tostada: Falsa alarma en office medico.",
+      "[SOPORTE 06:15] '¿Puedo apagarlo?': 'No doctor, dejelo encendido.'",
+      "[URGENCIAS 06:30] Telefono guardia: Silencio bendito por 5 minutos.",
+      "[CPD SOTANO 1] SAI en bypass: Vuelve a red normal limpia.",
+      "[SISTEMAS 06:45] Logs del sistema: Cero accesos sospechosos.",
+      "[DIALISIS 06:50] Monitor osmosis: Parametros en rango verde.",
+      "[PLANTA 4 01:22] Cuna con bascula: Peso enviado por puerto COM.",
+      "[URGENCIAS 01:35] 'No veo paciente': Filtro en 'Dados de alta.'",
+      "[CONSULTAS 01:58] Boligrafo caido: Bloqueaba apertura de lector.",
+      "[QUIROFANO 02:25] Cable de tierra: Puesto a masa correctamente.",
+      "[FARMACIA 02:42] Pistola de codigo: Bateria cargada en la cuna.",
+      "[CPD SOTANO 1] Monitor central: Mapa de red en verde completo.",
+      "[UCI 03:05] Desfibrilador: Test automatico nocturno OK.",
+      "[RADIOLOGIA 03:22] Chasis de rayos: Bateria cambiada a tiempo.",
+      "[PLANTA 3 03:40] 'La rueda no baja': Scroll del raton limpiado.",
+      "[TRIAJE 03:58] Monitor colgado: Soporte VESA bien apretado.",
+      "[SOPORTE 04:10] Medico temeroso: '¿Se borra si pulso Escape?'",
+      "[SISTEMAS 04:28] Switch PoE planta: Alimentando telefonos IP OK.",
+      "[PLANTA 2 04:42] 'No oigo el timbre': Altavoces apagados con rueda.",
+      "[LABORATORIO 05:00] Contador celulas: Puerto serie calibrado.",
+      "[DIRECCION 05:18] Correo no llega: Se auto-envio el correo a si.",
+      "[QUIROFANO 05:35] Endoscopia: Conector de fibra optica limpio.",
+      "[ARCHIVOS 05:50] Lector de barras: Cable estirado sin nudos.",
+      "[URGENCIAS 06:05] Etiquetadora: Sin pegamento en el rodillo.",
+      "[PLANTA 5 06:20] 'El cursor salta': Pelo de bata en sensor optico.",
+      "[CPD SOTANO 1] Botellero de agua: Bombona cambiada en el office.",
+      "[SISTEMAS 06:35] Base de datos SQL: Mantenimiento nocturno OK.",
+      "[CONSULTAS 06:48] Silla ergonomica: No se ha tragado ningun cable.",
+      "[TRIAJE 06:58] Impresora triaje: 100% lista para el nuevo dia.",
+      "[URGENCIAS 01:05] 'No abre historia': Tenia otra historia bloqueada.",
+      "[PLANTA 1 01:40] 'No va el teclado': Conector PS/2 cambiado a USB.",
+      "[CONSULTAS 02:15] 'Se cerro todo': Clic en 'Mostrar Escritorio'.",
+      "[QUIROFANO 02:40] Pantalla quirofano: Resolucion ajustada a 1080p.",
+      "[SOPORTE 03:00] Pregunta tipica: '¿El Wi-Fi gasta bateria?'",
+      "[FARMACIA 03:25] Escaner cenital: Luz LED encendida y enfocada.",
+      "[CPD SOTANO 1] Patch panel fibra: Conectores LC bien clickeados.",
+      "[UCI 03:50] Telemetria cardiaca: Senal al 100% de cobertura.",
+      "[RADIOLOGIA 04:15] Servidor PACS: Espacio en disco: 40 TB OK.",
+      "[PLANTA 3 04:40] Pantalla deslumbra: Modo oscuro activado en HIS.",
+      "[TRIAJE 05:05] Teclado silicona: Desinfectado y funcionando.",
+      "[SISTEMAS 05:25] DNS corporativo: Resolviendo 10.000 pet/s.",
+      "[URGENCIAS 05:45] La impresora pita: Tapa de salida mal cerrada.",
+      "[PLANTA 2 06:05] 'No encuentro Word': Anclado a barra de tareas.",
+      "[LABORATORIO 06:20] Analizador: Cable de red blindado OK.",
+      "[DIRECCION 06:35] Tablet gerencia: Modo avion desactivado.",
+      "[QUIROFANO 06:45] Reloj quirofano: Sincronizado por NTP con CPD.",
+      "[ARCHIVOS 06:52] Caja de folios: Apartada de la salida del rack.",
+      "[CPD SOTANO 1] Guardia nocturna: Equipo TIC siempre vigilante.",
+      "[URGENCIAS 06:58] Fin de guardia: Sobrevivimos una noche mas.",
+      "[SISTEMAS 07:00] Turno entrante: Informaticos de manana al relevo.",
+      "[CPD SOTANO 1] Ultimo cafe: Mision cumplida en Sant Joan.",
+      "[HOSPITAL 07:02] Todo en calma: Servidores en pie. Buen trabajo."
+    ];
+
+    function triggerAutoIncident() {
+      if (Math.random() < 0.22) {
+        const templ = GUARDIA_TICKER_TEMPLATES[Math.floor(Math.random() * GUARDIA_TICKER_TEMPLATES.length)];
+        addTicker(templ.replace('{G}', getCurrentGuardia()));
+      } else {
+        const msg = GENERAL_TICKER_POOL[Math.floor(Math.random() * GENERAL_TICKER_POOL.length)];
+        addTicker(msg);
+      }
+    }
+
+    let ticker = [
+      "[URGENCIAS 02:14] Ratón no responde: Estaba encima de un bocadillo.",
+      "[PLANTA 3 02:35] Pantalla negra: Solución: Encender la regleta.",
+      "[CPD CENTRAL 03:00] Switch de Urgencias estable y a salvo."
+    ];
+
+    function addTicker(msg) {
+      ticker.push(msg);
+      if (ticker.length > 7) ticker.shift();
+    }
+
+    function setToast(txt) {
+      toastText = txt;
+      toastAlpha = 1.0;
+    }
+
+    function refillBag() {
+      const p = [1, 2, 3, 4, 5, 6, 7];
+      for (let i = p.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [p[i], p[j]] = [p[j], p[i]];
+      }
+      bag.push(...p);
+    }
+
+    function getNextPiece() {
+      if (bag.length <= 7) refillBag();
+      return bag.shift();
+    }
+
+    function initGame() {
+      board = Array.from({length: BOARD_H}, () => Array(BOARD_W).fill(0));
+      bag = [];
+      refillBag();
+      nextQueue = [getNextPiece(), getNextPiece(), getNextPiece()];
+      holdPiece = 0;
+      canHold = true;
+      score = 0;
+      lines = 0;
+      level = 1;
+      piecesDropped = 0;
+      shiftStart = Date.now();
+      lastTickerTime = Date.now();
+      spawnPiece();
+      gameState = 'PLAY';
+      setToast(`GUARDIA: ${getCurrentGuardia().toUpperCase()}`);
+      addTicker(`[TURNO INICIADO] Guardia de hoy: ${getCurrentGuardia()} al frente del CPD.`);
+    }
+
+    function spawnPiece() {
+      currentPiece = nextQueue.shift();
+      nextQueue.push(getNextPiece());
+      pieceRot = 0;
+      pieceX = Math.floor((BOARD_W - TETROMINOES[currentPiece][0][0].length) / 2);
+      pieceY = 0;
+      canHold = true;
+
+      if (checkCollision(pieceX, pieceY, pieceRot)) {
+        gameState = 'GAMEOVER';
+        playTone(140, 'sawtooth', 0.6, 0.4);
+        addTicker("[ALERTA ROJA] Servidores caídos. Los médicos sacan el boli y papel.");
+        setToast("¡COLAPSO DEL CPD!");
+        if (score > highscore) {
+          highscore = score;
+          localStorage.setItem('santjoan_highscore', highscore.toString());
+        }
+      }
+    }
+
+    function checkCollision(px, py, rot) {
+      const shape = TETROMINOES[currentPiece][rot];
+      for (let r = 0; r < shape.length; r++) {
+        for (let c = 0; c < shape[r].length; c++) {
+          if (shape[r][c]) {
+            const bx = px + c;
+            const by = py + r;
+            if (bx < 0 || bx >= BOARD_W || by >= BOARD_H) return true;
+            if (by >= 0 && board[by][bx]) return true;
+          }
+        }
+      }
+      return false;
+    }
+
+    function rotate(dir) {
+      if (gameState !== 'PLAY' || currentPiece === 4) return;
+      const newRot = (pieceRot + dir + 4) % 4;
+      if (!checkCollision(pieceX, pieceY, newRot)) {
+        pieceRot = newRot;
+        playTone(440, 'triangle', 0.08, 0.15);
+      } else if (!checkCollision(pieceX + 1, pieceY, newRot)) {
+        pieceX += 1; pieceRot = newRot;
+        playTone(440, 'triangle', 0.08, 0.15);
+      } else if (!checkCollision(pieceX - 1, pieceY, newRot)) {
+        pieceX -= 1; pieceRot = newRot;
+        playTone(440, 'triangle', 0.08, 0.15);
+      }
+    }
+
+    function move(dx, dy) {
+      if (gameState !== 'PLAY') return false;
+      if (!checkCollision(pieceX + dx, pieceY + dy, pieceRot)) {
+        pieceX += dx;
+        pieceY += dy;
+        if (dx !== 0) playTone(280, 'sine', 0.05, 0.1);
+        return true;
+      }
+      return false;
+    }
+
+    function hardDrop() {
+      if (gameState !== 'PLAY') return;
+      let drop = 0;
+      while (!checkCollision(pieceX, pieceY + 1, pieceRot)) {
+        pieceY++;
+        drop++;
+      }
+      score += drop * 2;
+      lockPiece();
+      playTone(600, 'square', 0.1, 0.3);
+    }
+
+    function hold() {
+      if (gameState !== 'PLAY' || !canHold) return;
+      playTone(520, 'sine', 0.12, 0.2);
+      if (holdPiece === 0) {
+        holdPiece = currentPiece;
+        spawnPiece();
+      } else {
+        const tmp = holdPiece;
+        holdPiece = currentPiece;
+        currentPiece = tmp;
+        pieceRot = 0;
+        pieceX = Math.floor((BOARD_W - TETROMINOES[currentPiece][0][0].length) / 2);
+        pieceY = 0;
+      }
+      canHold = false;
+    }
+
+    function getGhostY() {
+      let gy = pieceY;
+      while (!checkCollision(pieceX, gy + 1, pieceRot)) gy++;
+      return gy;
+    }
+
+    function lockPiece() {
+      const shape = TETROMINOES[currentPiece][pieceRot];
+      for (let r = 0; r < shape.length; r++) {
+        for (let c = 0; c < shape[r].length; c++) {
+          if (shape[r][c]) {
+            const by = pieceY + r;
+            const bx = pieceX + c;
+            if (by >= 0 && by < BOARD_H && bx >= 0 && bx < BOARD_W) {
+              board[by][bx] = currentPiece;
+            }
+          }
+        }
+      }
+
+      // Relevo de guardia cada 25 piezas colocadas
+      piecesDropped++;
+      if (piecesDropped % 25 === 0) {
+        const nextGuard = getCurrentGuardia();
+        setToast(`¡RELEVO: ${nextGuard.toUpperCase()}!`);
+        addTicker(`[CAMBIO DE GUARDIA] 25 piezas colocadas. Entra al turno: ${nextGuard}.`);
+      }
+
+      let cleared = 0;
+      for (let r = BOARD_H - 1; r >= 0; r--) {
+        if (board[r].every(c => c > 0)) {
+          board.splice(r, 1);
+          board.unshift(Array(BOARD_W).fill(0));
+          cleared++;
+          r++;
+        }
+      }
+
+      if (cleared > 0) {
+        const oldLevel = level;
+        lines += cleared;
+        level = Math.floor(lines / 10) + 1;
+        const pts = [0, 100, 300, 500, 800][cleared] * level;
+        score += pts;
+        playTone(cleared === 4 ? 880 : 660, 'sine', 0.25, 0.35);
+
+        const toasts = ["", "¡CABLE ENCHUFADO!", "¡REINICIO MILAGROSO!", "¡¡TRIPLE CAFÉ CON LECHE!!", "¡¡¡TETRIS DE GUARDIA!!!"];
+        setToast(toasts[cleared]);
+
+        const msgs = [
+          "",
+          "[URGENCIAS] Ticket cerrado: El monitor funciona si se enchufa.",
+          "[MAGIA TIC] Apagar y encender: Salvo el turno una vez más.",
+          "[CPD SANT JOAN] Despeje triple: 3 marrones esquivados del tirón.",
+          "[HÉROE CPD] ¡Tetris nocturno!: Pánico evitado en Sant Joan."
+        ];
+        addTicker(msgs[cleared]);
+
+        if (level > oldLevel) {
+          setToast(`¡NIVEL ${level}: ${DEPARTMENTS[Math.min(level - 1, DEPARTMENTS.length - 1)]}!`);
+          addTicker(`[ASCENSO] Traslado de guardia: Nuevo sector ${DEPARTMENTS[Math.min(level - 1, DEPARTMENTS.length - 1)]}.`);
+        }
+
+        for (let i = 0; i < cleared * 20; i++) {
+          particles.push({
+            x: Math.random() * BOARD_W,
+            y: BOARD_H - cleared,
+            vx: (Math.random() - 0.5) * 8,
+            vy: (Math.random() - 0.5) * 8 - 3,
+            life: 1.0,
+            color: '#00ebff'
+          });
+        }
+      }
+
+      spawnPiece();
+    }
+
+    // Input Events
+    window.addEventListener('keydown', (e) => {
+      initAudio();
+      if (gameState === 'TITLE') {
+        if (e.key === 'Enter' || e.key === ' ' || e.key === '1') initGame();
+        else if (e.key === '2' || e.key === 'h' || e.key === 'F1') gameState = 'ABOUT';
+        return;
+      }
+      if (gameState === 'ABOUT') {
+        if (e.key === 'Escape' || e.key === 'h' || e.key === 'F1') gameState = 'TITLE';
+        return;
+      }
+      if (gameState === 'GAMEOVER') {
+        if (e.key === 'r' || e.key === 'Enter' || e.key === ' ') initGame();
+        else if (e.key === 'Escape') gameState = 'TITLE';
+        return;
+      }
+      if (gameState === 'PAUSE') {
+        if (e.key === 'p' || e.key === 'Escape') gameState = 'PLAY';
+        return;
+      }
+
+      switch (e.key) {
+        case 'ArrowLeft': case 'a': move(-1, 0); break;
+        case 'ArrowRight': case 'd': move(1, 0); break;
+        case 'ArrowUp': case 'w': case 'x': rotate(1); break;
+        case 'z': case 'q': rotate(-1); break;
+        case 'ArrowDown': case 's': move(0, 1); break;
+        case ' ': hardDrop(); break;
+        case 'c': case 'Shift': hold(); break;
+        case 'p': case 'Escape': gameState = 'PAUSE'; break;
+        case 'r': initGame(); break;
+        case 'm': isMuted = !isMuted; setToast(isMuted ? "MÚSICA: SILENCIO" : "MÚSICA: ACTIVA"); break;
+        case 't': trackIndex = (trackIndex + 1) % 3; setToast(TRACK_NAMES[trackIndex]); break;
+      }
+    });
+
+    // Drawing Helpers on 1920x1080 Canvas
+    function drawPanel(x, y, w, h, bg = '#0e1826', border = '#224169') {
+      ctx.fillStyle = bg;
+      ctx.fillRect(x, y, w, h);
+      ctx.strokeStyle = border;
+      ctx.lineWidth = 2;
+      ctx.strokeRect(x, y, w, h);
+      ctx.strokeStyle = '#00ebff';
+      ctx.strokeRect(x, y, 8, 8);
+      ctx.strokeRect(x + w - 8, y, 8, 8);
+      ctx.strokeRect(x, y + h - 8, 8, 8);
+      ctx.strokeRect(x + w - 8, y + h - 8, 8, 8);
+    }
+
+    function drawBlock(x, y, size, color, isGhost = false) {
+      if (!color) return;
+      if (isGhost) {
+        ctx.fillStyle = color + '28';
+        ctx.fillRect(x + 1, y + 1, size - 2, size - 2);
+        ctx.strokeStyle = color + 'aa';
+        ctx.lineWidth = 2;
+        ctx.strokeRect(x + 1, y + 1, size - 2, size - 2);
+        return;
+      }
+      ctx.fillStyle = color;
+      ctx.fillRect(x + 1, y + 1, size - 2, size - 2);
+      ctx.fillStyle = 'rgba(255,255,255,0.5)';
+      ctx.fillRect(x + 2, y + 2, size - 4, 4);
+      ctx.fillRect(x + 2, y + 2, 4, size - 4);
+      ctx.fillStyle = 'rgba(0,0,0,0.4)';
+      ctx.fillRect(x + size - 5, y + 2, 4, size - 4);
+      ctx.fillRect(x + 2, y + size - 5, size - 4, 4);
+    }
+
+    function drawPreview(p, cx, cy, sz = 28) {
+      if (!p) return;
+      const shape = TETROMINOES[p][0];
+      const startX = cx - (shape[0].length * sz) / 2;
+      const startY = cy - (shape.length * sz) / 2;
+      for (let r = 0; r < shape.length; r++) {
+        for (let c = 0; c < shape[r].length; c++) {
+          if (shape[r][c]) {
+            drawBlock(startX + c * sz, startY + r * sz, sz, PIECE_COLORS[p]);
+          }
+        }
+      }
+    }
+
+    // 1920x1080 Layout Constants
+    const BLOCK_S = 42;
+    const BOARD_PIX_W = BOARD_W * BLOCK_S; // 420
+    const BOARD_PIX_H = BOARD_H * BLOCK_S; // 840
+    const BOARD_X = 750;
+    const BOARD_Y = 118;
+
+    const LEFT_X = 20;
+    const LEFT_Y = 118;
+    const LEFT_W = 710;
+    const LEFT_H = 840;
+
+    const RIGHT_X = 1190;
+    const RIGHT_Y = 118;
+    const RIGHT_W = 710;
+    const RIGHT_H = 840;
+
+    let lastTime = 0;
+    function loop(time) {
+      const dt = (time - lastTime) / 1000;
+      lastTime = time;
+      ecgPhase += dt * 5;
+
+      if (gameState === 'PLAY') {
+        const fallInterval = Math.max(90, 850 * Math.pow(0.85, level - 1));
+        if (time - lastFall > fallInterval) {
+          lastFall = time;
+          if (!move(0, 1)) {
+            lockPiece();
+          }
+        }
+        if (time - lastTickerTime > 7500) {
+          lastTickerTime = time;
+          triggerAutoIncident();
+        }
+      }
+
+      // Update particles
+      for (let i = particles.length - 1; i >= 0; i--) {
+        const p = particles[i];
+        p.x += p.vx * dt;
+        p.y += p.vy * dt;
+        p.life -= dt * 1.5;
+        if (p.life <= 0) particles.splice(i, 1);
+      }
+
+      // Clear Screen
+      ctx.fillStyle = '#060c14';
+      ctx.fillRect(0, 0, WIN_W, WIN_H);
+
+      // Top Header
+      drawPanel(20, 14, 1880, 84);
+      // Hospital Crest
+      ctx.fillStyle = '#ff2d37';
+      ctx.fillRect(45, 38, 44, 16);
+      ctx.fillRect(59, 24, 16, 44);
+      ctx.strokeStyle = '#00ebff';
+      ctx.lineWidth = 2;
+      ctx.strokeRect(36, 16, 62, 60);
+
+      // Large Header
+      ctx.textAlign = 'left';
+      ctx.fillStyle = '#ffffff';
+      ctx.font = 'bold 28px "Segoe UI", sans-serif';
+      ctx.fillText("HOSPITAL UNIVERSITARIO DE SANT JOAN D'ALACANT", 120, 48);
+      ctx.fillStyle = '#00ebff';
+      ctx.font = 'bold 18px "Segoe UI", sans-serif';
+      ctx.fillText("UNIDAD DE INFORMÁTICA Y TIC  |  GUARDIA DE 24 HORAS - CENTRO DE PROCESO DE DATOS", 120, 78);
+
+      // ECG Heartbeat Strip
+      drawPanel(1500, 20, 380, 72, '#040810');
+      ctx.strokeStyle = '#19e65a';
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      for (let px = 0; px < 380; px += 2) {
+        const ph = (ecgPhase + px * 0.04) % 6.28;
+        let yv = 0;
+        if (ph > 2.0 && ph < 2.4) yv = Math.sin((ph - 2.0) / 0.4 * Math.PI) * -22;
+        const py = 20 + 36 + yv;
+        if (px === 0) ctx.moveTo(1500 + px, py);
+        else ctx.lineTo(1500 + px, py);
+      }
+      ctx.stroke();
+      ctx.fillStyle = '#19e65a';
+      ctx.font = 'bold 16px monospace';
+      ctx.fillText("ECG: 75 BPM | UPTIME CPD: 99.98%", 1520, 42);
+
+      // Left Panel
+      drawPanel(LEFT_X, LEFT_Y, LEFT_W, LEFT_H);
+      drawPanel(LEFT_X + 16, LEFT_Y + 14, LEFT_W - 32, 106, '#040810');
+      ctx.textAlign = 'center';
+      ctx.fillStyle = '#00ebff';
+      ctx.font = 'bold 32px "Segoe UI", sans-serif';
+      ctx.fillText("SANT JOAN TETRIS", LEFT_X + LEFT_W / 2, LEFT_Y + 46);
+      ctx.fillStyle = '#19eb5f';
+      ctx.font = 'bold 18px "Segoe UI", sans-serif';
+      ctx.fillText(`GUARDIA DE HOY: ${getCurrentGuardia().toUpperCase()}`, LEFT_X + LEFT_W / 2, LEFT_Y + 74);
+      ctx.fillStyle = '#87afdf';
+      ctx.font = '15px "Segoe UI", sans-serif';
+      ctx.fillText("CPD Sótano 1 | Relevo cada 25 piezas", LEFT_X + LEFT_W / 2, LEFT_Y + 98);
+
+      // HOLD Box
+      const holdY = LEFT_Y + 130;
+      drawPanel(LEFT_X + 16, holdY, LEFT_W - 32, 175, '#040810');
+      ctx.fillStyle = '#00ebff';
+      ctx.font = 'bold 20px "Segoe UI", sans-serif';
+      ctx.fillText("[ HOLD / CACHÉ ] (Tecla C o Shift)", LEFT_X + LEFT_W / 2, holdY + 36);
+      if (holdPiece) {
+        drawPreview(holdPiece, LEFT_X + LEFT_W / 2, holdY + 95, 30);
+      } else {
+        ctx.fillStyle = '#3c5a78';
+        ctx.font = 'bold 22px "Segoe UI", sans-serif';
+        ctx.fillText("- VACÍO -", LEFT_X + LEFT_W / 2, holdY + 95);
+      }
+      ctx.fillStyle = '#87afdf';
+      ctx.font = '15px "Segoe UI", sans-serif';
+      ctx.fillText("Guarda un bloque de emergencia...", LEFT_X + LEFT_W / 2, holdY + 155);
+
+      // Incidencias de la Guardia (Rotativas según el turno activo)
+      const sysY = holdY + 188;
+      drawPanel(LEFT_X + 16, sysY, LEFT_W - 32, 255, '#040810');
+      ctx.textAlign = 'left';
+      ctx.fillStyle = '#ffb400';
+      ctx.font = 'bold 18px "Segoe UI", sans-serif';
+      ctx.fillText("INCIDENCIAS DE LA GUARDIA:", LEFT_X + 32, sysY + 32);
+
+      const curShift = Math.floor(piecesDropped / 25) % 4;
+      const statusSets = [
+        // Turno 0 (Jose María)
+        [
+          ["Urgencias: Atasco papel", "[DE SIEMPRE]", "#ffb400"],
+          ["Planta 3: Ratón suelto", "[DESENCHUFADO]", "#19eb5f"],
+          ["UCI: Cable red quitado", "[CARGAR MÓVIL]", "#ff2d37"],
+          ["Consultas: 'Borré todo'", "[MINIMIZADO]", "#00ebff"],
+          ["Cafetera CPD: Presión", "[100% OK]", "#19eb5f"]
+        ],
+        // Turno 1 (Marichu)
+        [
+          ["Quirófano: Pantalla girada", "[90 GRADOS]", "#ffb400"],
+          ["Farmacia: Teclado con café", "[PEGAJOSO]", "#19eb5f"],
+          ["Admisión: Pulsera rota", "[DOBLE TICKET]", "#ff2d37"],
+          ["Planta 4: 'No hay internet'", "[SIN WIFI]", "#00ebff"],
+          ["Router CPD: Temperatura", "[16C FRESQUITO]", "#19eb5f"]
+        ],
+        // Turno 2 (Diego)
+        [
+          ["Radiología: TAC sin red", "[ENCHUFE FLOJO]", "#ffb400"],
+          ["Triaje: Impresora huelga", "[FALTA PAPEL]", "#19eb5f"],
+          ["Archivos: Archivo borrado", "[EN PAPELERA]", "#ff2d37"],
+          ["Planta 2: Regleta apagada", "[DADA CON PIE]", "#00ebff"],
+          ["Fibra Óptica: Troncal", "[10 GBPS OK]", "#19eb5f"]
+        ],
+        // Turno 3 (Ernesto)
+        [
+          ["Dirección: 'Se cayó red'", "[CABLE SUELTO]", "#ffb400"],
+          ["Laboratorio: Centrífuga", "[NO ES IMPRESORA]", "#19eb5f"],
+          ["UCI: Clave olvidada", "[EN POST-IT]", "#ff2d37"],
+          ["Consultas: Ratón sin pila", "[CAMBIADA 04AM]", "#00ebff"],
+          ["SAI Central: Baterías", "[CARGADAS 100%]", "#19eb5f"]
+        ]
+      ];
+      statusSets[curShift].forEach(([title, tag, col], i) => {
+        ctx.fillStyle = '#ffffff';
+        ctx.font = '16px "Segoe UI", sans-serif';
+        ctx.fillText(title, LEFT_X + 32, sysY + 70 + i * 38);
+        ctx.textAlign = 'right';
+        ctx.fillStyle = col;
+        ctx.font = 'bold 16px "Segoe UI", sans-serif';
+        ctx.fillText(tag, LEFT_X + LEFT_W - 32, sysY + 70 + i * 38);
+        ctx.textAlign = 'left';
+      });
+
+      // Music info
+      const musicY = sysY + 268;
+      drawPanel(LEFT_X + 16, musicY, LEFT_W - 32, 238, '#040810');
+      ctx.fillStyle = '#00ebff';
+      ctx.font = 'bold 18px "Segoe UI", sans-serif';
+      ctx.fillText("HILO MUSICAL DEL CPD (SANT JOAN):", LEFT_X + 32, musicY + 32);
+
+      // Visualizer Bars
+      for (let i = 0; i < 8; i++) {
+        const barH = 15 + Math.random() * 45;
+        ctx.fillStyle = i < 2 ? '#ff2d37' : (i < 5 ? '#ffb400' : '#19eb5f');
+        ctx.fillRect(LEFT_X + 32 + i * 78, musicY + 110 - barH, 70, barH);
+      }
+
+      ctx.fillStyle = '#ffffff';
+      ctx.font = 'bold 17px "Segoe UI", sans-serif';
+      ctx.fillText(TRACK_NAMES[trackIndex], LEFT_X + 32, musicY + 155);
+      ctx.fillStyle = '#ffb400';
+      ctx.font = '16px "Segoe UI", sans-serif';
+      ctx.fillText("[T] Pista   [M] Silenciar   [+/-] Volumen", LEFT_X + 32, musicY + 185);
+      ctx.fillStyle = '#87afdf';
+      ctx.font = '15px "Segoe UI", sans-serif';
+      ctx.fillText("Síntesis para no dormirse en guardia", LEFT_X + 32, musicY + 215);
+
+      // Playfield (Center Board)
+      drawPanel(BOARD_X - 8, BOARD_Y - 8, BOARD_PIX_W + 16, BOARD_PIX_H + 16, '#080f18');
+      ctx.strokeStyle = '#122030';
+      ctx.lineWidth = 1;
+      for (let c = 1; c < BOARD_W; c++) {
+        ctx.beginPath(); ctx.moveTo(BOARD_X + c * BLOCK_S, BOARD_Y); ctx.lineTo(BOARD_X + c * BLOCK_S, BOARD_Y + BOARD_PIX_H); ctx.stroke();
+      }
+      for (let r = 1; r < BOARD_H; r++) {
+        ctx.beginPath(); ctx.moveTo(BOARD_X, BOARD_Y + r * BLOCK_S); ctx.lineTo(BOARD_X + BOARD_PIX_W, BOARD_Y + r * BLOCK_S); ctx.stroke();
+      }
+
+      // Board Blocks
+      for (let r = 0; r < BOARD_H; r++) {
+        for (let c = 0; c < BOARD_W; c++) {
+          if (board[r][c]) {
+            drawBlock(BOARD_X + c * BLOCK_S, BOARD_Y + r * BLOCK_S, BLOCK_S, PIECE_COLORS[board[r][c]]);
+          }
+        }
+      }
+
+      // Active & Ghost
+      if (gameState === 'PLAY' && currentPiece) {
+        const gy = getGhostY();
+        const shape = TETROMINOES[currentPiece][pieceRot];
+        for (let r = 0; r < shape.length; r++) {
+          for (let c = 0; c < shape[r].length; c++) {
+            if (shape[r][c]) {
+              drawBlock(BOARD_X + (pieceX + c) * BLOCK_S, BOARD_Y + (gy + r) * BLOCK_S, BLOCK_S, PIECE_COLORS[currentPiece], true);
+              drawBlock(BOARD_X + (pieceX + c) * BLOCK_S, BOARD_Y + (pieceY + r) * BLOCK_S, BLOCK_S, PIECE_COLORS[currentPiece]);
+            }
+          }
+        }
+      }
+
+      // Particles
+      particles.forEach(p => {
+        ctx.fillStyle = p.color;
+        ctx.fillRect(BOARD_X + p.x * BLOCK_S, BOARD_Y + p.y * BLOCK_S, 5, 5);
+      });
+
+      // Right Panel
+      drawPanel(RIGHT_X, RIGHT_Y, RIGHT_W, RIGHT_H);
+      drawPanel(RIGHT_X + 16, RIGHT_Y + 14, RIGHT_W - 32, 175, '#040810');
+      ctx.textAlign = 'center';
+      ctx.fillStyle = '#00ebff';
+      ctx.font = 'bold 20px "Segoe UI", sans-serif';
+      ctx.fillText("[ PRÓXIMAS INCIDENCIAS ENTRANTES ]", RIGHT_X + RIGHT_W / 2, RIGHT_Y + 36);
+      nextQueue.slice(0, 3).forEach((np, idx) => {
+        drawPreview(np, RIGHT_X + 80 + idx * 210, RIGHT_Y + 95, 28);
+      });
+      ctx.fillStyle = '#87afdf';
+      ctx.font = '15px "Segoe UI", sans-serif';
+      ctx.fillText("3 marrones más entrando por Urgencias", RIGHT_X + RIGHT_W / 2, RIGHT_Y + 155);
+
+      // Stats Box
+      const statsY = RIGHT_Y + 200;
+      drawPanel(RIGHT_X + 16, statsY, RIGHT_W - 32, 280, '#040810');
+      ctx.textAlign = 'left';
+      ctx.fillStyle = '#00ebff';
+      ctx.font = 'bold 18px "Segoe UI", sans-serif';
+      ctx.fillText("INCIDENCIAS RESUELTAS (PUNTOS):", RIGHT_X + 32, statsY + 30);
+
+      // Giant Score!
+      ctx.fillStyle = '#ffffff';
+      ctx.font = 'bold 48px monospace';
+      ctx.fillText(score.toString().padStart(7, '0'), RIGHT_X + 32, statsY + 80);
+
+      ctx.fillStyle = '#ffb400';
+      ctx.font = 'bold 20px "Segoe UI", sans-serif';
+      ctx.fillText(`Récord de la Guardia: ${highscore.toString().padStart(7, '0')}`, RIGHT_X + 32, statsY + 120);
+
+      ctx.fillStyle = '#ffffff';
+      ctx.font = '20px "Segoe UI", sans-serif';
+      ctx.fillText(`Marrones esquivados (Líneas): ${lines}`, RIGHT_X + 32, statsY + 155);
+
+      ctx.fillStyle = '#19eb5f';
+      ctx.font = 'bold 20px "Segoe UI", sans-serif';
+      ctx.fillText(`Nivel ${level} - Servicio: ${DEPARTMENTS[Math.min(level - 1, DEPARTMENTS.length - 1)]}`, RIGHT_X + 32, statsY + 190);
+
+      const elapsedSec = Math.floor((Date.now() - shiftStart) / 1000);
+      const em = Math.floor(elapsedSec / 60);
+      const es = elapsedSec % 60;
+      ctx.fillStyle = '#00ebff';
+      ctx.font = '18px "Segoe UI", sans-serif';
+      ctx.fillText(`Guardia: ${getCurrentGuardia()}  (${em.toString().padStart(2,'0')}:${es.toString().padStart(2,'0')} min)`, RIGHT_X + 32, statsY + 225);
+
+      ctx.fillStyle = '#87afdf';
+      ctx.font = '16px "Segoe UI", sans-serif';
+      const piecesInShift = piecesDropped % 25;
+      ctx.fillText(`Turno activo: ${piecesInShift}/25 piezas para relevo`, RIGHT_X + 32, statsY + 255);
+
+      // Terminal Ticker
+      const tickY = statsY + 295;
+      drawPanel(RIGHT_X + 16, tickY, RIGHT_W - 32, 335, '#040810');
+      ctx.fillStyle = '#19eb5f';
+      ctx.font = 'bold 19px monospace';
+      ctx.fillText(">_ LOG DE INCIDENCIAS (SANT JOAN 24H):", RIGHT_X + 32, tickY + 32);
+
+      const visibleTickers = ticker.slice(-5);
+      visibleTickers.forEach((t, i) => {
+        const ey = tickY + 68 + i * 52;
+        const splitIdx = t.indexOf(': ');
+        if (splitIdx !== -1) {
+          const tag = t.substring(0, splitIdx + 1);
+          const desc = '> ' + t.substring(splitIdx + 2);
+          ctx.fillStyle = '#00ebff';
+          ctx.font = 'bold 15px monospace';
+          ctx.fillText(tag, RIGHT_X + 32, ey);
+          ctx.fillStyle = '#87afdf';
+          ctx.font = '14px monospace';
+          ctx.fillText(desc, RIGHT_X + 32, ey + 22);
+        } else {
+          ctx.fillStyle = '#87afdf';
+          ctx.font = '15px monospace';
+          ctx.fillText(t, RIGHT_X + 32, ey + 12);
+        }
+      });
+
+      // Bottom Footer Bar
+      drawPanel(20, 972, 1880, 94);
+
+      // Divider line
+      ctx.strokeStyle = '#224169';
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(1180, 984);
+      ctx.lineTo(1180, 1054);
+      ctx.stroke();
+
+      ctx.fillStyle = '#ffffff';
+      ctx.font = 'bold 18px "Segoe UI", sans-serif';
+      ctx.fillText("[ESPACIO] Caída rápida   [C/Shift] Hold   [P] Pausa   [R] Reiniciar", 48, 1008);
+      ctx.fillStyle = '#87afdf';
+      ctx.font = '16px "Segoe UI", sans-serif';
+      ctx.fillText("[Flechas / WASD] Movimiento y Giro   [T] Música   [M] Mute   [F1] Manual", 48, 1042);
+
+      ctx.textAlign = 'right';
+      ctx.fillStyle = '#00ebff';
+      ctx.font = 'bold 18px "Segoe UI", sans-serif';
+      ctx.fillText("Hospital Univ. Sant Joan d'Alacant", 1872, 1008);
+      ctx.fillStyle = '#ffb400';
+      ctx.font = '16px "Segoe UI", sans-serif';
+      ctx.fillText("\"¿Ha probado a apagarlo y encenderlo?\"", 1872, 1042);
+
+      // Toasts
+      if (toastAlpha > 0) {
+        ctx.textAlign = 'center';
+        ctx.fillStyle = `rgba(0, 235, 255, ${toastAlpha})`;
+        ctx.font = 'bold 36px "Segoe UI", sans-serif';
+        ctx.fillText(toastText, BOARD_X + BOARD_PIX_W / 2, BOARD_Y + BOARD_PIX_H / 2);
+        toastAlpha -= dt * 0.8;
+      }
+
+      // Menus / Overlays
+      if (gameState === 'TITLE') {
+        ctx.fillStyle = 'rgba(6, 12, 20, 0.96)';
+        ctx.fillRect(0, 0, WIN_W, WIN_H);
+
+        ctx.textAlign = 'center';
+        ctx.fillStyle = '#ff2d37';
+        ctx.fillRect(WIN_W / 2 - 30, 85, 60, 20);
+        ctx.fillRect(WIN_W / 2 - 10, 65, 20, 60);
+        ctx.strokeStyle = '#00ebff';
+        ctx.lineWidth = 3;
+        ctx.strokeRect(WIN_W / 2 - 45, 50, 90, 90);
+
+        ctx.fillStyle = '#00ebff';
+        ctx.font = 'bold 56px "Segoe UI", sans-serif';
+        ctx.fillText("SANT JOAN TETRIS", WIN_W / 2, 195);
+
+        ctx.fillStyle = '#ffffff';
+        ctx.font = 'bold 26px "Segoe UI", sans-serif';
+        ctx.fillText("HOSPITAL UNIVERSITARIO DE SANT JOAN D'ALACANT", WIN_W / 2, 240);
+
+        ctx.fillStyle = '#19eb5f';
+        ctx.font = '20px "Segoe UI", sans-serif';
+        ctx.fillText("UNIDAD DE INFORMÁTICA Y TECNOLOGÍAS DE LA INFORMACIÓN (TIC)", WIN_W / 2, 275);
+        ctx.fillStyle = '#00ebff';
+        ctx.font = 'bold 18px "Segoe UI", sans-serif';
+        ctx.fillText("EQUIPO DE GUARDIA: Jose María · Marichu · Diego · Ernesto (Turnos rotatorios)", WIN_W / 2, 305);
+        ctx.fillStyle = '#ffb400';
+        ctx.font = '18px "Segoe UI", sans-serif';
+        ctx.fillText("Simulador de Guardia Nocturna: Relevo cada 25 piezas colocadas", WIN_W / 2, 335);
+
+        // Menu Buttons
+        drawPanel(WIN_W / 2 - 380, 390, 760, 68, '#0e1826', '#00ebff');
+        ctx.fillStyle = '#00ebff';
+        ctx.font = 'bold 26px "Segoe UI", sans-serif';
+        ctx.fillText("1. COMENZAR TURNO DE GUARDIA (ENTER / ESPACIO)", WIN_W / 2, 434);
+
+        drawPanel(WIN_W / 2 - 380, 475, 760, 68, '#0e1826', '#224169');
+        ctx.fillStyle = '#87afdf';
+        ctx.font = 'bold 26px "Segoe UI", sans-serif';
+        ctx.fillText("2. MANUAL DE SUPERVIVENCIA EN EL HOSPITAL (PULSA 2 / H)", WIN_W / 2, 519);
+
+        ctx.fillStyle = '#ffffff';
+        ctx.font = '18px "Segoe UI", sans-serif';
+        ctx.fillText("Usa Flechas o W/S para seleccionar  |  ENTER o ESPACIO para confirmar", WIN_W / 2, 615);
+        ctx.fillStyle = '#ffb400';
+        ctx.fillText("[T] Música de guardia   [M] Silenciar música   [+/-] Regular volumen", WIN_W / 2, 650);
+
+        // TINY REFERENCE TO MIGUEL ANGEL (pequeñito al principio)
+        ctx.fillStyle = '#3c5a78';
+        ctx.font = '12px "Segoe UI", sans-serif';
+        ctx.fillText("Concepto original y prompt: Miguel Ángel Esteban - aka MA (2026)", WIN_W / 2, 1045);
+      } else if (gameState === 'PAUSE') {
+        drawPanel(WIN_W / 2 - 400, WIN_H / 2 - 180, 800, 360, '#0e1826', '#00ebff');
+        ctx.textAlign = 'center';
+        ctx.fillStyle = '#00ebff';
+        ctx.font = 'bold 36px "Segoe UI", sans-serif';
+        ctx.fillText("GUARDIA EN PAUSA", WIN_W / 2, WIN_H / 2 - 90);
+        ctx.fillStyle = '#ffffff';
+        ctx.font = '22px "Segoe UI", sans-serif';
+        ctx.fillText(`${getCurrentGuardia()} ha bajado a por un café a Urgencias.`, WIN_W / 2, WIN_H / 2 - 30);
+        ctx.fillStyle = '#ffb400';
+        ctx.font = '19px "Segoe UI", sans-serif';
+        ctx.fillText("Reza para que ningún switch de planta eche humo mientras tanto...", WIN_W / 2, WIN_H / 2 + 15);
+        ctx.fillStyle = '#19eb5f';
+        ctx.font = 'bold 28px "Segoe UI", sans-serif';
+        ctx.fillText("Pulsa [P] o [ESC] para reanudar el turno", WIN_W / 2, WIN_H / 2 + 85);
+      } else if (gameState === 'GAMEOVER') {
+        drawPanel(WIN_W / 2 - 450, WIN_H / 2 - 240, 900, 480, '#0e1826', '#ff2d37');
+        ctx.textAlign = 'center';
+        ctx.fillStyle = '#ff2d37';
+        ctx.font = 'bold 44px "Segoe UI", sans-serif';
+        ctx.fillText("¡¡COLAPSO TOTAL DEL HOSPITAL!!", WIN_W / 2, WIN_H / 2 - 140);
+        ctx.fillStyle = '#ffffff';
+        ctx.font = '22px "Segoe UI", sans-serif';
+        ctx.fillText(`El turno de guardia de ${getCurrentGuardia()} colapsó ante tantos tickets.`, WIN_W / 2, WIN_H / 2 - 95);
+        ctx.fillStyle = '#ffb400';
+        ctx.font = '19px "Segoe UI", sans-serif';
+        ctx.fillText("Se ha caído la red. Los médicos están sacando papel y bolígrafo BIC.", WIN_W / 2, WIN_H / 2 - 65);
+        ctx.fillStyle = '#00ebff';
+        ctx.font = 'bold 36px monospace';
+        ctx.fillText(`Tickets Solucionados: ${score}`, WIN_W / 2, WIN_H / 2 - 10);
+        ctx.fillStyle = '#ffffff';
+        ctx.font = '22px "Segoe UI", sans-serif';
+        ctx.fillText(`Marrones esquivados: ${lines} líneas`, WIN_W / 2, WIN_H / 2 + 35);
+        ctx.fillStyle = '#ffb400';
+        ctx.font = '22px "Segoe UI", sans-serif';
+        ctx.fillText(`Servicio de la catástrofe: ${DEPARTMENTS[Math.min(level - 1, DEPARTMENTS.length - 1)]}`, WIN_W / 2, WIN_H / 2 + 75);
+        ctx.fillStyle = '#19eb5f';
+        ctx.font = 'bold 30px "Segoe UI", sans-serif';
+        ctx.fillText("Pulsa [R] o [ESPACIO] para fichar en otra guardia", WIN_W / 2, WIN_H / 2 + 145);
+      } else if (gameState === 'ABOUT') {
+        drawPanel(WIN_W / 2 - 700, 70, 1400, 940, '#0e1826', '#00ebff');
+        ctx.textAlign = 'center';
+        ctx.fillStyle = '#00ebff';
+        ctx.font = 'bold 38px "Segoe UI", sans-serif';
+        ctx.fillText("MANUAL DE SUPERVIVENCIA: EL INFORMÁTICO DE GUARDIA", WIN_W / 2, 130);
+        ctx.fillStyle = '#ffffff';
+        ctx.font = '22px "Segoe UI", sans-serif';
+        ctx.fillText("HOSPITAL UNIVERSITARIO DE SANT JOAN D'ALACANT - SÓTANO 1 CPD", WIN_W / 2, 170);
+
+        ctx.textAlign = 'left';
+        ctx.fillStyle = '#ffb400';
+        ctx.font = 'bold 24px "Segoe UI", sans-serif';
+        ctx.fillText("PROTOCOLO OFICIAL DE ACTUACIÓN ANTE INCIDENCIAS:", WIN_W / 2 - 640, 230);
+
+        const rules = [
+          "1. Pregunta siempre: 'Doctor, ¿ha probado a apagarlo y volverlo a encender?' (Soluciona el 90% de los casos).",
+          "2. Si el usuario jura que 'no ha tocado nada', es que ha tocado absolutamente todos los cables del despacho.",
+          "3. La cafetera del CPD es un elemento de soporte vital básico: Uptime requerido del 100.00%.",
+          "4. La impresora de Urgencias no está rota, solo tiene hambre de papel y ganas de incordiar en el cambio de turno.",
+          "5. Si un médico te llama a las 4:00 AM para cambiarle la pila al ratón, respira hondo y cuenta hasta diez.",
+          "6. Cada línea que completas en el juego es un ticket absurdo que consigues cerrar con éxito.",
+          "7. Si parpadea una luz roja en el rack a las 5:30 AM, tápala con un post-it y que lo mire el turno de mañana.",
+          "8. Turno rotativo cada 25 piezas: Jose María, Marichu, Diego y Ernesto."
+        ];
+        rules.forEach((r, i) => {
+          ctx.fillStyle = '#ffffff';
+          ctx.font = '18px "Segoe UI", sans-serif';
+          ctx.fillText(r, WIN_W / 2 - 640, 275 + i * 44);
+        });
+
+        ctx.fillStyle = '#00ebff';
+        ctx.font = 'bold 24px "Segoe UI", sans-serif';
+        ctx.fillText("CONTROLES DEL TURNO DE GUARDIA:", WIN_W / 2 - 640, 650);
+        ctx.fillStyle = '#ffffff';
+        ctx.font = '18px "Segoe UI", sans-serif';
+        ctx.fillText("Mover: Flechas / AD  |  Rotar: Arriba o W (CW), Z o Q (CCW)  |  Caída Instantánea: Espacio", WIN_W / 2 - 640, 688);
+        ctx.fillText("Caché (Hold): C o Shift  |  Música: T (Pista), M (Mute), +/- (Volumen)  |  Pausa: P o Esc", WIN_W / 2 - 640, 722);
+
+        ctx.textAlign = 'center';
+        ctx.fillStyle = '#19eb5f';
+        ctx.font = 'bold 28px "Segoe UI", sans-serif';
+        ctx.fillText("Pulsa [ESC] o [F1 / H] para volver al Menú Principal", WIN_W / 2, 880);
+      }
+
+      requestAnimationFrame(loop);
+    }
+    requestAnimationFrame(loop);
+  </script>
+</body>
+</html>

@@ -1,0 +1,36 @@
+🏥 SANT JOAN TETRIS - EDICIÓN HOSPITAL UNIVERSITARIO
+=====================================================
+Optimizado para resolución Full HD (1920 x 1080)
+Unidad de Informática y Tecnologías de la Información (TIC)
+Hospital Universitario de Sant Joan d'Alacant
+
+🎮 CÓMO JUGAR EN WINDOWS:
+1. Haz doble clic en "SantJoanTetris.exe".
+2. ¡Listo para tu turno de guardia! No requiere instalación previa.
+3. Asegúrate de mantener "SDL2.dll" en la misma carpeta que el ejecutable.
+*(También puedes abrir "SantJoanTetris.html" en Edge o Chrome si lo prefieres).*
+
+📺 PANTALLA COMPLETA Y MAXIMIZAR EN WINDOWS:
+- Ahora puedes MAXIMIZAR la ventana en Windows haciendo clic en el botón Maximizar de la barra de título, arrastrándola arriba, o pulsando F11 (o Alt+Enter) para pantalla completa. El juego escala automáticamente manteniendo la nitidez y formato Full HD (1920x1080) sin distorsión.
+
+🕹️ CONTROLES DEL TURNO DE GUARDIA:
+- Flechas ← / → o teclas A / D : Mover pieza lateralmente
+- Flecha ↑ o W : Rotar en sentido horario (CW)
+- Z o Q : Rotar en sentido antihorario (CCW)
+- Flecha ↓ o S : Caída suave (Soft Drop)
+- Barra Espaciadora : Caída instantánea (Hard Drop)
+- C o Shift : Guardar en memoria Caché (Hold)
+- F11 o Alt+Enter : Pantalla completa / Maximizar
+- T : Cambiar pista de música moderna (techno / synthwave de guardia)
+- M : Silenciar / Activar música
+- + / - : Subir / Bajar volumen
+- P o Esc : Pausar / Reanudar turno
+- F1 o H : Manual de supervivencia del informático de guardia
+- R : Reiniciar guardia
+
+💡 REGLAS DE ORO DEL INFORMÁTICO DE SANT JOAN:
+1. "Doctor, ¿ha probado a apagarlo y volverlo a encender?" (soluciona el 90% de los tickets).
+2. Si un usuario dice que no ha tocado nada, es que ha tocado todos los cables.
+3. La cafetera del CPD tiene prioridad asistencial absoluta.
+
+(Prompt original: Miguel Ángel Esteban - aka MA - 2026).
