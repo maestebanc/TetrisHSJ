@@ -63,6 +63,21 @@ cd /home/maec/tetris3
 
 ---
 
+## 🍏 Cómo Jugar en Mac (Apple Silicon: M1 / M2 / M3 / M4)
+
+1. **Ejecución directa (.app):**
+   * Descomprime **`SantJoanTetris_macOS_Silicon.zip`**.
+   * Haz doble clic en **`SantJoanTetris.app`** (incluye icono Retina y librería SDL2 integrada).
+   * *Nota Gatekeeper:* La primera vez en macOS, haz clic derecho sobre la app y pulsa **Abrir** (o escribe en Terminal: `xattr -cr SantJoanTetris.app`).
+2. **Desde la Terminal:**
+   ```bash
+   ./run_mac.sh
+   # o bien:
+   ./sant_joan_tetris_mac
+   ```
+
+---
+
 ## 🎮 Controles del Turno
 
 | Tecla | Acción |

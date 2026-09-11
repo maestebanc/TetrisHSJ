@@ -1,0 +1,46 @@
+🏥 SANT JOAN TETRIS - EDICIÓN HOSPITAL UNIVERSITARIO
+=====================================================
+Versión nativa para macOS (Apple Silicon: M1 / M2 / M3 / M4)
+Unidad de Informática y Tecnologías de la Información (TIC)
+Hospital Universitario de Sant Joan d'Alacant
+
+🎮 CÓMO JUGAR EN MAC (APPLE SILICON):
+-----------------------------------------------------
+1. Descomprime "SantJoanTetris_macOS_Silicon.zip".
+2. Haz doble clic en "SantJoanTetris.app".
+   (También puedes ejecutar "./run_mac.sh" desde la Terminal).
+
+⚠️ NOTA DE SEGURIDAD DE MACOS (GATEKEEPER):
+Al ser una aplicación de código abierto sin firma de pago de Apple:
+- La primera vez, haz CLIC DERECHO (o Control + Clic) sobre "SantJoanTetris.app"
+  y selecciona "Abrir". En el aviso que aparezca, pulsa en "Abrir".
+- O si prefieres desde la Terminal en la carpeta descomprimida:
+  xattr -cr SantJoanTetris.app
+
+📺 PANTALLA Y GRÁFICOS RETINA / FULL HD:
+- El juego está optimizado en 1920x1080 Full HD nativo.
+- Pulsa F11 (o Alt + Enter) para alternar pantalla completa sin marcos.
+- Puedes maximizar o redimensionar la ventana arrastrando cualquier esquina.
+
+🕹️ CONTROLES DEL TURNO DE GUARDIA:
+- Flechas ← / → o teclas A / D : Mover pieza lateralmente
+- Flecha ↑ o W : Rotar en sentido horario (CW)
+- Z o Q : Rotar en sentido antihorario (CCW)
+- Flecha ↓ o S : Caída suave (Soft Drop)
+- Barra Espaciadora : Caída instantánea (Hard Drop)
+- C o Shift : Guardar en memoria Caché (Hold)
+- F11 o Alt+Enter : Pantalla completa / Maximizar
+- T : Cambiar pista musical temática
+- M : Silenciar / Activar música
+- + / - : Subir / Bajar volumen
+- P o Esc : Pausar / Reanudar turno (Pausa para café)
+- F1 o H : Manual de supervivencia del informático de guardia
+- F12 : Guardar captura de pantalla en Full HD (screenshot_*.bmp)
+- R : Reiniciar guardia
+
+💡 REGLAS DE ORO DEL INFORMÁTICO DE SANT JOAN:
+1. "¿Ha probado a apagarlo y volverlo a encender?" (soluciona el 90% de las incidencias).
+2. Si un usuario jura que no tocó nada, ha desenchufado medio rack.
+3. La cafetera del CPD de Urgencias es infraestructura crítica.
+
+(Concepto original y prompt: Miguel Ángel Esteban - aka MA - 2026).

@@ -37,12 +37,31 @@ static void init_windows_dpi_awareness(void) {
 }
 #endif
 
+#ifdef __APPLE__
+#include <unistd.h>
+#include <libgen.h>
+#include <mach-o/dyld.h>
+static void init_macos_environment(void) {
+    char path[1024];
+    uint32_t size = sizeof(path);
+    if (_NSGetExecutablePath(path, &size) == 0) {
+        char *dir = dirname(path);
+        if (dir) {
+            chdir(dir);
+        }
+    }
+}
+#endif
+
 int main(int argc, char *argv[]) {
     (void)argc;
     (void)argv;
 
 #ifdef _WIN32
     init_windows_dpi_awareness();
+#endif
+#ifdef __APPLE__
+    init_macos_environment();
 #endif
 
     // Set DPI and scaling hints BEFORE SDL_Init so video subsystem takes them into account
@@ -74,6 +93,7 @@ int main(int argc, char *argv[]) {
     // Load window icon from multiple candidate paths
     SDL_Surface *icon = SDL_LoadBMP("assets/icon.bmp");
     if (!icon) icon = SDL_LoadBMP("icon.bmp");
+    if (!icon) icon = SDL_LoadBMP("../Resources/assets/icon.bmp");
     if (!icon) icon = SDL_LoadBMP("/home/maec/tetris3/assets/icon.bmp");
     if (icon) {
         SDL_SetWindowIcon(window, icon);

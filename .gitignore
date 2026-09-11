@@ -2,6 +2,7 @@
 obj/
 *.o
 *.pdb
+SantJoanTetris.app/
 
 # Puntuación local persistente
 highscore.txt
