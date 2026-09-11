@@ -108,7 +108,7 @@ bool render_init(SDL_Window **out_window, SDL_Renderer **out_renderer) {
     int win_w = (int)(WIN_W * fit_scale);
     int win_h = (int)(WIN_H * fit_scale);
 
-    Uint32 win_flags = SDL_WINDOW_SHOWN | SDL_WINDOW_RESIZABLE;
+    Uint32 win_flags = SDL_WINDOW_SHOWN | SDL_WINDOW_RESIZABLE | SDL_WINDOW_ALLOW_HIGHDPI;
 
     // Start MAXIMIZED on Windows or when display is <= 1080p, so the game fills
     // the screen cleanly without any border overflow or titlebar cut-off!

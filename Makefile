@@ -7,6 +7,8 @@ WIN_INCLUDES = -Isrc -Iwin_sdk/include
 WIN_LIBS = -Lwin_sdk/lib -lmingw32 -lSDL2main win_sdk/lib/libSDL2.dll.a -lm
 WIN_FLAGS = -target x86_64-windows -Wall -Wextra -O2 -Wl,/subsystem:windows
 
+WINDRES = llvm-windres
+
 SRC = src/main.c src/game.c src/render.c src/audio.c src/font.c
 HDR = src/game.h src/render.h src/audio.h src/font.h
 
@@ -14,8 +16,11 @@ all: windows linux
 
 windows: SantJoanTetris.exe
 
-SantJoanTetris.exe: $(SRC) $(HDR)
-	$(ZIG) cc $(WIN_FLAGS) $(WIN_INCLUDES) -o SantJoanTetris.exe $(SRC) $(WIN_LIBS)
+manifest.res.o: manifest.rc SantJoanTetris.exe.manifest
+	$(WINDRES) manifest.rc -O coff -o manifest.res.o
+
+SantJoanTetris.exe: $(SRC) $(HDR) manifest.res.o
+	$(ZIG) cc $(WIN_FLAGS) $(WIN_INCLUDES) -o SantJoanTetris.exe $(SRC) manifest.res.o $(WIN_LIBS)
 
 linux: sant_joan_tetris
 
@@ -26,6 +31,6 @@ package-windows: SantJoanTetris.exe
 	zip -r SantJoanTetris_Windows.zip SantJoanTetris.exe SantJoanTetris.exe.manifest SDL2.dll LEEME_WINDOWS.txt highscore.txt assets/
 
 clean:
-	rm -f sant_joan_tetris SantJoanTetris.exe SantJoanTetris_Windows.zip
+	rm -f sant_joan_tetris SantJoanTetris.exe SantJoanTetris_Windows.zip manifest.res.o
 
 .PHONY: all windows linux package-windows clean

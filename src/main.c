@@ -6,10 +6,48 @@
 #include <stdio.h>
 #include <stdbool.h>
 
+#ifdef _WIN32
+#include <windows.h>
+static void init_windows_dpi_awareness(void) {
+    // 1. Try Windows 10 1703+ PerMonitorV2
+    HMODULE user32 = LoadLibraryA("user32.dll");
+    if (user32) {
+        typedef BOOL (WINAPI *SetProcessDpiAwarenessContextFunc)(void*);
+        SetProcessDpiAwarenessContextFunc setContext = 
+            (SetProcessDpiAwarenessContextFunc)GetProcAddress(user32, "SetProcessDpiAwarenessContext");
+        if (setContext) {
+            setContext((void*)-4); // DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2
+        } else {
+            typedef BOOL (WINAPI *SetProcessDPIAwareFunc)(void);
+            SetProcessDPIAwareFunc setDPIAware = 
+                (SetProcessDPIAwareFunc)GetProcAddress(user32, "SetProcessDPIAware");
+            if (setDPIAware) setDPIAware();
+        }
+    }
+    // 2. Try Windows 8.1+ Per-Monitor
+    HMODULE shcore = LoadLibraryA("Shcore.dll");
+    if (shcore) {
+        typedef HRESULT (WINAPI *SetProcessDpiAwarenessFunc)(int);
+        SetProcessDpiAwarenessFunc setAwareness = 
+            (SetProcessDpiAwarenessFunc)GetProcAddress(shcore, "SetProcessDpiAwareness");
+        if (setAwareness) {
+            setAwareness(2); // PROCESS_PER_MONITOR_DPI_AWARE
+        }
+    }
+}
+#endif
+
 int main(int argc, char *argv[]) {
     (void)argc;
     (void)argv;
 
+#ifdef _WIN32
+    init_windows_dpi_awareness();
+#endif
+
+    // Set DPI and scaling hints BEFORE SDL_Init so video subsystem takes them into account
+    SDL_SetHint("SDL_WINDOWS_DPI_AWARENESS", "permonitorv2");
+    SDL_SetHint("SDL_WINDOWS_DPI_SCALING", "1");
     SDL_SetHint(SDL_HINT_RENDER_SCALE_QUALITY, "1");
     SDL_SetHint(SDL_HINT_RENDER_VSYNC, "1");
 
