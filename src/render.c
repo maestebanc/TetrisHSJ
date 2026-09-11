@@ -801,3 +801,33 @@ void render_frame(SDL_Renderer *renderer, const Game *g) {
 
     SDL_RenderPresent(renderer);
 }
+
+void render_take_screenshot(SDL_Renderer *renderer, const Game *g, const char *bmp_path) {
+    SDL_SetRenderDrawColor(renderer, BG_DARK.r, BG_DARK.g, BG_DARK.b, 255);
+    SDL_RenderClear(renderer);
+    SDL_RenderSetViewport(renderer, NULL);
+
+    render_header(renderer, g);
+    render_left_panel(renderer, g);
+    render_playfield(renderer, g);
+    render_right_panel(renderer, g);
+    render_footer(renderer);
+
+    if (g->state == STATE_TITLE) {
+        render_title_screen(renderer, g);
+    } else if (g->state == STATE_PAUSE) {
+        render_pause_screen(renderer);
+    } else if (g->state == STATE_GAMEOVER) {
+        render_gameover_screen(renderer, g);
+    } else if (g->state == STATE_ABOUT) {
+        render_about_screen(renderer);
+    }
+
+    SDL_Surface *surface = SDL_CreateRGBSurfaceWithFormat(0, WIN_W, WIN_H, 32, SDL_PIXELFORMAT_ARGB8888);
+    if (surface) {
+        SDL_RenderReadPixels(renderer, NULL, SDL_PIXELFORMAT_ARGB8888, surface->pixels, surface->pitch);
+        SDL_SaveBMP(surface, bmp_path);
+        SDL_FreeSurface(surface);
+    }
+    SDL_RenderPresent(renderer);
+}

@@ -46,6 +46,44 @@ int main(int argc, char *argv[]) {
     game_init(&game);
     if (argc > 1 && strcmp(argv[1], "--play") == 0) {
         game_reset(&game);
+    } else if (argc > 1 && strcmp(argv[1], "--generate-screenshots") == 0) {
+        // 1. Pantalla de Inicio (Title Screen)
+        render_take_screenshot(renderer, &game, "docs/screenshots/inicio.bmp");
+
+        // 2. Pantalla de Partida en Vivo (Gameplay)
+        game_reset(&game);
+        game.state = STATE_PLAY;
+        game.toast.alpha = 0.0f;
+        game.toast.text[0] = '\0';
+        game.score = 24850;
+        game.lines = 28;
+        game.level = 3;
+        game.pieces_dropped = 29; // Turno de Marichu (25..49), 21 piezas para relevo
+        game.highscore = 45000;
+        for (int c = 0; c < BOARD_WIDTH; c++) {
+            if (c != 3 && c != 4) game.board[19][c] = PIECE_I;
+            if (c != 0 && c != 8) game.board[18][c] = PIECE_J;
+            if (c > 1 && c < 9)   game.board[17][c] = PIECE_T;
+            if (c >= 3 && c <= 7) game.board[16][c] = PIECE_O;
+            if (c == 2 || c == 5) game.board[15][c] = PIECE_S;
+        }
+        game.current_piece = PIECE_Z;
+        game.piece_x = 4;
+        game.piece_y = 11;
+        render_take_screenshot(renderer, &game, "docs/screenshots/gameplay.bmp");
+
+        // 3. Manual de Guardia (F1 / About)
+        game.state = STATE_ABOUT;
+        render_take_screenshot(renderer, &game, "docs/screenshots/manual_guardia.bmp");
+
+        // 4. Pausa de Guardia (Pausa Café)
+        game.state = STATE_PAUSE;
+        render_take_screenshot(renderer, &game, "docs/screenshots/pausa_cafe.bmp");
+
+        render_cleanup(window, renderer);
+        audio_cleanup();
+        SDL_Quit();
+        return 0;
     }
 
     bool running = true;
@@ -73,6 +111,13 @@ int main(int argc, char *argv[]) {
                         } else {
                             SDL_SetWindowFullscreen(window, SDL_WINDOW_FULLSCREEN_DESKTOP);
                         }
+                        break;
+                    }
+                    if (event.key.keysym.sym == SDLK_F12) {
+                        char fname[64];
+                        snprintf(fname, sizeof(fname), "screenshot_%u.bmp", (unsigned int)SDL_GetTicks());
+                        render_take_screenshot(renderer, &game, fname);
+                        printf("Captura guardada en %s\n", fname);
                         break;
                     }
                     if (event.key.repeat == 0) {

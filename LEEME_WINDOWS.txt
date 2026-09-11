@@ -26,6 +26,7 @@ Hospital Universitario de Sant Joan d'Alacant
 - + / - : Subir / Bajar volumen
 - P o Esc : Pausar / Reanudar turno
 - F1 o H : Manual de supervivencia del informático de guardia
+- F12 : Guardar captura de pantalla en Full HD (screenshot_*.bmp)
 - R : Reiniciar guardia
 
 💡 REGLAS DE ORO DEL INFORMÁTICO DE SANT JOAN:

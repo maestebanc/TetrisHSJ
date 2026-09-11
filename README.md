@@ -6,6 +6,18 @@
 
 Un juego de Tetris moderno y de alto rendimiento ambientado en el día a día (y la noche a noche) del equipo de **Informáticos de Guardia** del Hospital Universitario de Sant Joan d'Alacant (**Jose María, Marichu, Diego y Ernesto**), optimizado de forma nativa para resolución **Full HD (1920 × 1080)** con tipografías grandes y bloques de 42 px para una lectura descansada y nítida.
 
+![Partida en vivo - Sant Joan Tetris](docs/screenshots/gameplay.png)
+
+---
+
+## 📸 Galería de Capturas
+
+| Menú Principal e Inicio | Turno de Guardia en Vivo (Full HD) |
+|:---:|:---:|
+| ![Pantalla de Inicio](docs/screenshots/inicio.png) | ![Partida en Vivo](docs/screenshots/gameplay.png) |
+| **Manual de Guardia (F1)** | **Pausa de Guardia (Café en Urgencias)** |
+| ![Manual de Guardia](docs/screenshots/manual_guardia.png) | ![Pausa de Guardia](docs/screenshots/pausa_cafe.png) |
+
 ---
 
 ## 🌟 La Realidad de la Guardia en Sant Joan
@@ -68,6 +80,7 @@ cd /home/maec/tetris3
 | <kbd>P</kbd> o <kbd>Escape</kbd> | Pausa para ir a por café |
 | <kbd>R</kbd> | Reiniciar turno de guardia |
 | <kbd>F1</kbd> o <kbd>H</kbd> | Manual de supervivencia del informático de guardia |
+| <kbd>F12</kbd> | Guardar captura de pantalla en Full HD (`screenshot_*.bmp`) |
 
 ---
 

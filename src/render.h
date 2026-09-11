@@ -11,5 +11,6 @@
 bool render_init(SDL_Window **out_window, SDL_Renderer **out_renderer);
 void render_cleanup(SDL_Window *window, SDL_Renderer *renderer);
 void render_frame(SDL_Renderer *renderer, const Game *game);
+void render_take_screenshot(SDL_Renderer *renderer, const Game *g, const char *bmp_path);
 
 #endif // RENDER_H
