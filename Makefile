@@ -23,7 +23,7 @@ sant_joan_tetris: $(SRC) $(HDR)
 	$(CC) $(CFLAGS) -o sant_joan_tetris $(SRC) $(LDFLAGS)
 
 package-windows: SantJoanTetris.exe
-	zip -r SantJoanTetris_Windows.zip SantJoanTetris.exe SDL2.dll LEEME_WINDOWS.txt highscore.txt assets/
+	zip -r SantJoanTetris_Windows.zip SantJoanTetris.exe SantJoanTetris.exe.manifest SDL2.dll LEEME_WINDOWS.txt highscore.txt assets/
 
 clean:
 	rm -f sant_joan_tetris SantJoanTetris.exe SantJoanTetris_Windows.zip

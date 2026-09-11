@@ -5,6 +5,10 @@
 #include <string.h>
 #include <math.h>
 
+#ifdef _WIN32
+#include <windows.h>
+#endif
+
 // Exact 1920x1080 Full HD Layout Coordinates
 #define WIN_W          1920
 #define WIN_H          1080
@@ -61,16 +65,68 @@ static const SDL_Color TEXT_DARK    = { 60, 90, 120, 255 };
 static const SDL_Color TERMINAL_BG  = { 4, 8, 14, 252 };
 
 bool render_init(SDL_Window **out_window, SDL_Renderer **out_renderer) {
+#ifdef _WIN32
+    // Windows Per-Monitor V2 DPI awareness to avoid bitmap blur and incorrect OS scaling
+    typedef BOOL (WINAPI *SetProcessDpiAwarenessContextFunc)(HANDLE);
+    HMODULE user32 = GetModuleHandleA("user32.dll");
+    if (user32) {
+        SetProcessDpiAwarenessContextFunc setDpi = (SetProcessDpiAwarenessContextFunc)GetProcAddress(user32, "SetProcessDpiAwarenessContext");
+        if (setDpi) {
+            setDpi((HANDLE)-4); // DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2
+        }
+    }
+#endif
+
     SDL_SetHint(SDL_HINT_RENDER_SCALE_QUALITY, "1");
     SDL_SetHint(SDL_HINT_RENDER_VSYNC, "1");
+    SDL_SetHint("SDL_WINDOWS_DPI_AWARENESS", "permonitorv2");
+    SDL_SetHint("SDL_WINDOWS_DPI_SCALING", "1");
+
+    // Detect usable screen work area (subtracting OS taskbars and docks)
+    SDL_Rect usable = { 0, 0, WIN_W, WIN_H };
+    if (SDL_GetDisplayUsableBounds(0, &usable) != 0) {
+        SDL_DisplayMode dm;
+        if (SDL_GetDesktopDisplayMode(0, &dm) == 0) {
+            usable.w = dm.w;
+            usable.h = dm.h;
+        } else {
+            usable.w = WIN_W;
+            usable.h = WIN_H;
+        }
+    }
+
+    // Determine safe windowed size that fits inside the usable area with margins
+    int max_w = usable.w > 120 ? usable.w - 80 : usable.w;
+    int max_h = usable.h > 140 ? usable.h - 100 : usable.h;
+
+    float scale_w = (float)max_w / (float)WIN_W;
+    float scale_h = (float)max_h / (float)WIN_H;
+    float fit_scale = scale_w < scale_h ? scale_w : scale_h;
+    if (fit_scale > 1.0f) fit_scale = 1.0f;
+    if (fit_scale < 0.35f) fit_scale = 0.35f;
+
+    int win_w = (int)(WIN_W * fit_scale);
+    int win_h = (int)(WIN_H * fit_scale);
+
+    Uint32 win_flags = SDL_WINDOW_SHOWN | SDL_WINDOW_RESIZABLE;
+
+    // Start MAXIMIZED on Windows or when display is <= 1080p, so the game fills
+    // the screen cleanly without any border overflow or titlebar cut-off!
+#ifdef _WIN32
+    win_flags |= SDL_WINDOW_MAXIMIZED;
+#else
+    if (usable.w <= WIN_W || usable.h <= WIN_H) {
+        win_flags |= SDL_WINDOW_MAXIMIZED;
+    }
+#endif
 
     SDL_Window *win = SDL_CreateWindow(
         "Sant Joan Tetris - Hospital Universitario de Sant Joan d'Alacant (1920x1080 Full HD)",
         SDL_WINDOWPOS_CENTERED,
         SDL_WINDOWPOS_CENTERED,
-        WIN_W,
-        WIN_H,
-        SDL_WINDOW_SHOWN | SDL_WINDOW_RESIZABLE
+        win_w,
+        win_h,
+        win_flags
     );
     if (!win) {
         printf("SDL_CreateWindow Error: %s\n", SDL_GetError());
@@ -781,7 +837,6 @@ static void render_about_screen(SDL_Renderer *ren) {
 void render_frame(SDL_Renderer *renderer, const Game *g) {
     SDL_SetRenderDrawColor(renderer, BG_DARK.r, BG_DARK.g, BG_DARK.b, 255);
     SDL_RenderClear(renderer);
-    SDL_RenderSetViewport(renderer, NULL); // Sin vibracion de pantalla
 
     render_header(renderer, g);
     render_left_panel(renderer, g);
@@ -805,7 +860,6 @@ void render_frame(SDL_Renderer *renderer, const Game *g) {
 void render_take_screenshot(SDL_Renderer *renderer, const Game *g, const char *bmp_path) {
     SDL_SetRenderDrawColor(renderer, BG_DARK.r, BG_DARK.g, BG_DARK.b, 255);
     SDL_RenderClear(renderer);
-    SDL_RenderSetViewport(renderer, NULL);
 
     render_header(renderer, g);
     render_left_panel(renderer, g);
