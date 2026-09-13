@@ -71,6 +71,7 @@ typedef struct {
     int combo;
     bool back_to_back;
     int pieces_dropped;
+    int guardia_offset; // desplaza qué informático empieza el turno (aleatorio por partida)
 
     // Timing
     uint32_t last_fall_time;

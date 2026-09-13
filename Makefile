@@ -2,7 +2,7 @@ CC = gcc
 CFLAGS = -Wall -Wextra -O2 -Isrc
 LDFLAGS = -lSDL2 -lm
 
-ZIG = $(HOME)/.local/share/mise/installs/zig/0.13.0/bin/zig
+ZIG ?= zig
 WIN_INCLUDES = -Isrc -Iwin_sdk/include
 WIN_LIBS = -Lwin_sdk/lib -lmingw32 -lSDL2main win_sdk/lib/libSDL2.dll.a -lm
 WIN_FLAGS = -target x86_64-windows -Wall -Wextra -O2 -Wl,/subsystem:windows
@@ -12,9 +12,26 @@ WINDRES = llvm-windres
 SRC = src/main.c src/game.c src/render.c src/audio.c src/font.c
 HDR = src/game.h src/render.h src/audio.h src/font.h
 
-MAC_INCLUDES = -Isrc -Imac_sdk/include
-MAC_LIBS = -Lmac_sdk/lib -lSDL2 -lm -Wl,-rpath,@executable_path/ -Wl,-rpath,@executable_path/../Frameworks
-MAC_FLAGS = -target aarch64-macos -Wall -Wextra -O2
+# El target "mac" tiene dos caminos:
+#  - Compilando EN un Mac real (p.ej. el runner macos-latest de CI): usa el
+#    clang y el SDL2 nativos del sistema (instalado con `brew install sdl2`).
+#    Es lo más fiable, y es lo que de verdad se puede firmar y ejecutar.
+#  - Compilando desde Linux (este equipo de desarrollo): usa zig cc en modo
+#    cross-compile contra el mac_sdk/ vendorizado. Sirve para detectar errores
+#    de compilación pronto, pero el binario resultante NO se puede firmar ni
+#    probar aquí — para eso está el workflow de CI en macos-latest.
+UNAME_S := $(shell uname -s)
+ifeq ($(UNAME_S),Darwin)
+	MAC_CC = cc
+	MAC_INCLUDES = -Isrc $(shell sdl2-config --cflags)
+	MAC_LIBS = $(shell sdl2-config --libs) -lm
+	MAC_FLAGS = -Wall -Wextra -O2
+else
+	MAC_CC = $(ZIG) cc
+	MAC_INCLUDES = -Isrc -Imac_sdk/include
+	MAC_LIBS = -Lmac_sdk/lib -lSDL2 -lm -Wl,-rpath,@executable_path/ -Wl,-rpath,@executable_path/../Frameworks
+	MAC_FLAGS = -target aarch64-macos -Wall -Wextra -O2
+endif
 
 all: windows linux mac
 
@@ -34,7 +51,7 @@ sant_joan_tetris: $(SRC) $(HDR)
 mac: sant_joan_tetris_mac
 
 sant_joan_tetris_mac: $(SRC) $(HDR)
-	$(ZIG) cc $(MAC_FLAGS) $(MAC_INCLUDES) -o sant_joan_tetris_mac $(SRC) $(MAC_LIBS)
+	$(MAC_CC) $(MAC_FLAGS) $(MAC_INCLUDES) -o sant_joan_tetris_mac $(SRC) $(MAC_LIBS)
 
 mac-app: sant_joan_tetris_mac
 	rm -rf SantJoanTetris.app
@@ -48,17 +65,60 @@ mac-app: sant_joan_tetris_mac
 	cp assets/* SantJoanTetris.app/Contents/MacOS/assets/
 	cp sant_joan_tetris_mac SantJoanTetris.app/Contents/MacOS/SantJoanTetris
 	chmod +x SantJoanTetris.app/Contents/MacOS/SantJoanTetris
+ifeq ($(UNAME_S),Darwin)
+	@# Compilado en un Mac real: el binario quedó enlazado contra el SDL2 de
+	@# Homebrew por una ruta absoluta (p.ej. /opt/homebrew/...), que no existe
+	@# en el Mac de quien lo descargue. Hay que copiar ESE dylib concreto y
+	@# reescribir la referencia a una ruta relativa (@executable_path) para
+	@# que el .app sea de verdad autónomo, en vez de copiar a ciegas el dylib
+	@# vendorizado (que ni siquiera es el que se usó para enlazar).
+	@SDL_DYLIB=$$(otool -L SantJoanTetris.app/Contents/MacOS/SantJoanTetris | grep -o '[^ ]*libSDL2[^ ]*\.dylib' | head -1); \
+	echo "Empaquetando $$SDL_DYLIB junto al ejecutable..."; \
+	cp "$$SDL_DYLIB" SantJoanTetris.app/Contents/MacOS/libSDL2-2.0.0.dylib; \
+	install_name_tool -id @executable_path/libSDL2-2.0.0.dylib SantJoanTetris.app/Contents/MacOS/libSDL2-2.0.0.dylib; \
+	install_name_tool -change "$$SDL_DYLIB" @executable_path/libSDL2-2.0.0.dylib SantJoanTetris.app/Contents/MacOS/SantJoanTetris; \
+	cp SantJoanTetris.app/Contents/MacOS/libSDL2-2.0.0.dylib SantJoanTetris.app/Contents/Frameworks/
+	@# CRÍTICO en Apple Silicon: macOS se niega a ejecutar binarios arm64 sin
+	@# firmar (exigencia del kernel, no solo de Gatekeeper). Firma ad-hoc, sin
+	@# necesitar cuenta de pago de Apple: basta para que arranque en cualquier Mac.
+	@echo "Firmando SantJoanTetris.app (ad-hoc)..."
+	@codesign --force --deep --sign - SantJoanTetris.app
+	@echo "OK: firmado. Verificando..."
+	@codesign --verify --deep --strict SantJoanTetris.app && echo "Firma verificada correctamente."
+else
 	cp mac_sdk/lib/libSDL2-2.0.0.dylib SantJoanTetris.app/Contents/Frameworks/
 	cp mac_sdk/lib/libSDL2-2.0.0.dylib SantJoanTetris.app/Contents/MacOS/
+	@echo "AVISO: compilado en Linux (cross), no en un Mac real."
+	@echo "       'codesign' no existe fuera de macOS, así que este .app NO"
+	@echo "       arrancará en Apple Silicon tal cual. Es solo para detectar"
+	@echo "       errores de compilación pronto — el .app que de verdad se"
+	@echo "       distribuye lo firma el workflow de CI en macos-latest"
+	@echo "       (ver .github/workflows/build.yml), o hazlo tú a mano en un"
+	@echo "       Mac con: codesign --force --deep --sign - SantJoanTetris.app"
+endif
 
 package-windows: SantJoanTetris.exe
-	zip -r SantJoanTetris_Windows.zip SantJoanTetris.exe SantJoanTetris.exe.manifest SDL2.dll LEEME_WINDOWS.txt highscore.txt assets/
+	rm -f SantJoanTetris_Windows.zip
+	zip -j SantJoanTetris_Windows.zip SantJoanTetris.exe SantJoanTetris.exe.manifest win_sdk/bin/SDL2.dll LEEME_WINDOWS.txt highscore.txt
+	zip -r SantJoanTetris_Windows.zip assets/
 
 package-mac: mac-app
 	rm -f SantJoanTetris_macOS_Silicon.zip
-	zip -r SantJoanTetris_macOS_Silicon.zip SantJoanTetris.app sant_joan_tetris_mac run_mac.sh LEEME_MAC.txt assets/ mac_sdk/lib/libSDL2-2.0.0.dylib
+	zip -r SantJoanTetris_macOS_Silicon.zip SantJoanTetris.app sant_joan_tetris_mac run_mac.sh LEEME_MAC.txt assets/
+	@# El dylib vendorizado suelto solo hace falta si el .app se cruzó desde
+	@# Linux (sant_joan_tetris_mac / run_mac.sh sueltos lo necesitan al lado).
+	@# En un Mac real el .app ya lleva su propio SDL2 autónomo dentro.
+ifneq ($(UNAME_S),Darwin)
+	zip SantJoanTetris_macOS_Silicon.zip mac_sdk/lib/libSDL2-2.0.0.dylib
+endif
+
+package-web: SantJoanTetris.html
+	rm -f SantJoanTetris_Web.zip
+	zip -j SantJoanTetris_Web.zip SantJoanTetris.html LEEME_WEB.txt
+
+package-all: package-windows package-mac package-web
 
 clean:
-	rm -rf sant_joan_tetris SantJoanTetris.exe SantJoanTetris_Windows.zip manifest.res.o sant_joan_tetris_mac SantJoanTetris.app SantJoanTetris_macOS_Silicon.zip
+	rm -rf sant_joan_tetris SantJoanTetris.exe SantJoanTetris_Windows.zip manifest.res.o sant_joan_tetris_mac SantJoanTetris.app SantJoanTetris_macOS_Silicon.zip SantJoanTetris_Web.zip
 
-.PHONY: all windows linux mac mac-app package-windows package-mac clean
+.PHONY: all windows linux mac mac-app package-windows package-mac package-web package-all clean

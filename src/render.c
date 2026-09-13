@@ -121,7 +121,7 @@ bool render_init(SDL_Window **out_window, SDL_Renderer **out_renderer) {
 #endif
 
     SDL_Window *win = SDL_CreateWindow(
-        "Sant Joan Tetris - Hospital Universitario de Sant Joan d'Alacant (1920x1080 Full HD)",
+        "Sant Joan Tetris - Hospital Universitario de Sant Joan d'Alacant",
         SDL_WINDOWPOS_CENTERED,
         SDL_WINDOWPOS_CENTERED,
         win_w,
@@ -729,7 +729,7 @@ static void render_title_screen(SDL_Renderer *ren, const Game *g) {
     font_draw_text_centered(ren, "[T] Pista Musical   [M] Silenciar Musica   [+/-] Regular Volumen", mid_x, foot_y + 38, 2, ACCENT_AMBER);
 
     // Tiny discreet reference ONLY here at the bottom of the title screen with year 2026
-    font_draw_text_centered(ren, "Concepto original y prompt: Miguel Angel Esteban - aka MA (2026)", mid_x, 1045, 1, TEXT_MUTED);
+    font_draw_text_centered(ren, "Concepto original y prompt: Miguel Angel Esteban - aka MA (2026)", mid_x, 1040, 2, TEXT_MUTED);
 }
 
 static void render_pause_screen(SDL_Renderer *ren) {

@@ -141,7 +141,7 @@ const char *game_get_guardia_name(int idx) {
 }
 
 int game_get_current_guardia_index(const Game *g) {
-    int idx = (g->pieces_dropped / 25) % 4;
+    int idx = (g->pieces_dropped / 25 + g->guardia_offset) % 4;
     if (idx < 0) idx = 0;
     return idx;
 }
@@ -361,7 +361,108 @@ static const char *GENERAL_TICKER_POOL[] = {
     "[SISTEMAS 07:00] Turno entrante:\n > Informaticos de manana al relevo.",
     "[CPD SOTANO 1] Ultimo cafe:\n > Mision cumplida en Sant Joan.",
     "[HOSPITAL 07:02] Todo en calma:\n > Servidores en pie. Buen trabajo.",
+
+    // Aplicaciones reales del hospital: Orion Clinic, Orion Logis, Orion RIS,
+    // SISCOL (turnos por kiosko + pantallas de llamada), QUENDA (gestiona
+    // las pantallas de SISCOL), IRIS, Terminal y Power Iris.
+    "[ADMISION 01:16] Orion Clinic no arranca:\n > Doble clic en el icono de Word.",
+    "[FARMACIA 02:05] Orion Logis atascado:\n > Pedido de gasas duplicado x40.",
+    "[RADIOLOGIA 02:38] Orion RIS sin imagenes:\n > El PACS seguia procesando cafe.",
+    "[SALA ESPERA 03:02] SISCOL no llama a nadie:\n > El kiosko imprimia turnos en blanco.",
+    "[CONSULTAS 03:20] QUENDA no actualiza pantalla:\n > Servicio reiniciado en 8 segundos.",
+    "[TRIAJE 03:44] Kiosko de SISCOL colgado:\n > Alguien pulso 'Turno' 20 veces.",
+    "[QUIROFANO 04:05] IRIS no carga estudio:\n > Cache local lleno de fotos de gatos.",
+    "[SISTEMAS 04:22] Terminal remoto caido:\n > Sesion RDP zombie desde ayer.",
+    "[DIRECCION 04:50] Power Iris sin licencia:\n > Renovada antes de que lo note nadie.",
+    "[URGENCIAS 05:08] Orion Clinic muy lento:\n > 300 pacientes abiertos a la vez.",
+    "[FARMACIA 05:20] Orion Logis 'sin stock':\n > El almacen tenia el filtro puesto.",
+    "[SALA ESPERA 05:36] Pantalla de SISCOL en negro:\n > El HDMI se habia salido un poco.",
+    "[RADIOLOGIA 05:50] Orion RIS duplica informes:\n > El radiologo le dio doble a Enter.",
+    "[ADMISION 06:02] QUENDA no llama al 47:\n > El paciente 47 se habia ido a fumar.",
+    "[CONSULTAS 06:10] IRIS con lupa gigante:\n > Zoom al 800%% sin querer.",
+    "[LABORATORIO 06:22] Power Iris no imprime:\n > La cola tenia 200 etiquetas.",
+    "[UCI 01:44] Terminal de guardia congelado:\n > El raton necesitaba pilas nuevas.",
+    "[SOPORTE 02:52] '¿Que es SISCOL?':\n > 'El que llama a los pacientes.'",
+    "[TRIAJE 03:12] Kiosko no da papelito:\n > Rollo de ticket puesto al reves.",
+    "[FARMACIA 04:02] Orion Logis pide firma:\n > El lapiz optico sin punta.",
+    "[RADIOLOGIA 04:48] IRIS y RIS discuten:\n > Cuestion de sincronizar relojes.",
+    "[ADMISION 05:14] QUENDA repite el mismo numero:\n > Alguien lo habia vuelto a pedir.",
+    "[SISTEMAS 05:40] Orion Clinic en mantenimiento:\n > Ventana nocturna sin incidencias.",
+    "[SALA ESPERA 06:16] SISCOL sin sonido:\n > Altavoz del pasillo desconectado.",
+
+    "[URGENCIAS 01:05] Grapadora atascada:\n > No es de perifericos, es papeleria.",
+    "[CONSULTAS 01:20] 'No imprime nada':\n > La impresora estaba en otra consulta.",
+    "[QUIROFANO 01:35] Bisturi electrico:\n > No usa Bluetooth, tranquilos.",
+    "[TRIAJE 01:50] Boligrafo sin tinta:\n > Ticket cerrado con otro boli.",
+    "[FARMACIA 02:10] Balanza de precision:\n > Calibrada a las 3 de la manana.",
+    "[SOPORTE 02:25] '¿Por que parpadea?':\n > Es el salvapantallas, tranquilo.",
+    "[CPD SOTANO 1] Ventilador del rack:\n > Cambiado antes de que chirrie.",
+    "[UCI 02:50] Alarma silenciada:\n > Por error, ya esta reactivada.",
+    "[RADIOLOGIA 03:10] Chaleco plomado:\n > No interfiere con el Wi-Fi.",
+    "[ADMISION 03:30] Cajero de pagos:\n > Atascado con una moneda de 2 euros.",
+    "[PLANTA 3 03:50] Cargador de movil:\n > Enchufado a la toma correcta al final.",
+    "[LABORATORIO 04:10] Microscopio digital:\n > Cable HDMI cambiado.",
+    "[QUIROFANO 04:25] Reloj de pared:\n > Pilas cambiadas en plena guardia.",
+    "[CONSULTAS 04:40] 'No veo el cursor':\n > Estaba en la otra pantalla.",
+    "[SISTEMAS 04:55] Backup incremental:\n > Completado sin fallos.",
+    "[URGENCIAS 05:10] Camilla electrica:\n > El motor no lleva firmware.",
+    "[FARMACIA 05:25] Etiqueta borrosa:\n > Cartucho de tinta cambiado.",
+    "[TRIAJE 05:40] Bascula digital:\n > Puesta a cero correctamente.",
+    "[SOPORTE 05:55] '¿Reinicio el router?':\n > Mejor esperar al cambio de turno.",
+    "[CPD SOTANO 1] Ultima ronda de cafe:\n > Combustible para el amanecer.",
 };
+
+// Mensajes de linea completada: varios por categoria, elegidos al azar, para
+// que no salga siempre el mismo texto cada vez.
+typedef struct {
+    const char *toast;
+    uint8_t r, g, b;
+    const char *ticker;
+} ClearMsg;
+
+static const ClearMsg SINGLE_CLEAR_MSGS[] = {
+    { "¡CABLE ENCHUFADO!", 0, 240, 240, "[URGENCIAS] Ticket cerrado:\n > El monitor funciona si se enchufa." },
+    { "¡TICKET CERRADO!", 0, 220, 255, "[SOPORTE] Incidencia resuelta:\n > Apagar y encender, otra vez." },
+    { "¡UN MARRON MENOS!", 0, 230, 200, "[PLANTA] Aviso solucionado:\n > Era el cable de red, como siempre." },
+    { "¡BUEN REFLEJO!", 100, 220, 255, "[TRIAJE] Cola despejada:\n > Un paciente menos esperando." },
+    { "¡RESUELTO EN SEGUNDOS!", 0, 235, 255, "[CPD] Ticket cerrado:\n > Ni tiempo de sentarse." },
+    { "¡OTRO MENOS!", 60, 225, 235, "[ADMISION] Incidencia cerrada:\n > La cola de tickets respira." },
+};
+
+static const ClearMsg DOUBLE_CLEAR_MSGS[] = {
+    { "¡REINICIO MILAGROSO!", 40, 220, 70, "[MAGIA TIC] Apagar y encender:\n > Salvo el turno una vez mas." },
+    { "¡DOBLE RESCATE!", 60, 230, 120, "[URGENCIAS] Dos tickets a la vez:\n > Multitarea de manual." },
+    { "¡PAR PERFECTO!", 80, 240, 140, "[SISTEMAS] Doble incidencia:\n > Cerradas antes del cafe." },
+    { "¡COMBO DE GUARDIA!", 50, 225, 100, "[SOPORTE] Dos avisos seguidos:\n > El turno va que vuela." },
+    { "¡DOS POR EL PRECIO DE UNO!", 70, 235, 130, "[CPD] Doble ticket cerrado:\n > Racha de buena suerte." },
+};
+
+static const ClearMsg TRIPLE_CLEAR_MSGS[] = {
+    { "¡¡TRIPLE CAFE CON LECHE!!", 255, 170, 0, "[CPD SANT JOAN] Despeje triple:\n > 3 marrones esquivados del tiron." },
+    { "¡¡RACHA IMPARABLE!!", 255, 190, 20, "[URGENCIAS] Triple ticket cerrado:\n > El turno lo va a celebrar." },
+    { "¡¡TRIPLE SALVAMENTO!!", 255, 180, 10, "[SISTEMAS] Tres avisos a la vez:\n > Nadie se lo cree en direccion." },
+    { "¡¡GUARDIA DE ORO!!", 255, 200, 30, "[CPD] Triple incidencia resuelta:\n > Se merece una medalla." },
+    { "¡¡TRIPLETE NOCTURNO!!", 255, 175, 15, "[SOPORTE] Tres tickets seguidos:\n > El cafe ya no hace falta." },
+};
+
+static const ClearMsg TETRIS_CLEAR_MSGS[] = {
+    { "¡¡¡TETRIS DE GUARDIA!!!", 170, 45, 240, "[HEROE CPD] ¡Tetris nocturno!:\n > Panico evitado en Sant Joan." },
+    { "¡¡¡CUATRO DE UNA!!!", 190, 60, 250, "[URGENCIAS] Cuadruple ticket:\n > Se comenta en la sala de cafe." },
+    { "¡¡¡DESPEJE TOTAL!!!", 200, 70, 255, "[CPD SANT JOAN] Tetris limpio:\n > Direccion pide una repeticion." },
+    { "¡¡¡NOCHE LEGENDARIA!!!", 180, 55, 245, "[SISTEMAS] Cuatro lineas de golpe:\n > Se queda para la posteridad." },
+};
+
+static const ClearMsg TETRIS_B2B_CLEAR_MSGS[] = {
+    { "¡¡¡HEROE DEL CPD!!!", 255, 215, 0, "[LEYENDA] Doble Tetris seguido:\n > El turno manana debe el desayuno." },
+    { "¡¡¡IMPARABLE!!!", 255, 225, 20, "[LEYENDA] Otro Tetris seguido:\n > Va a entrar en el libro de guardias." },
+    { "¡¡¡RACHA DE LEYENDA!!!", 255, 220, 10, "[CPD SANT JOAN] Back-to-back Tetris:\n > Se comenta durante semanas." },
+};
+
+static const ClearMsg *pick_clear_msg(const ClearMsg *pool, int n) {
+    return &pool[rand() % n];
+}
+
+#define CLEAR_MSG_COUNT(arr) (int)(sizeof(arr) / sizeof(arr[0]))
 
 static void trigger_auto_incident(Game *g) {
     // 20% de probabilidad: Mencion del informatico de guardia de hoy
@@ -515,6 +616,7 @@ void game_reset(Game *g) {
     spawn_piece(g);
 
     g->pieces_dropped = 0;
+    g->guardia_offset = rand() % 4; // el informatico que abre el turno cambia cada partida
     audio_set_level_tempo(g->level);
     char init_buf[128];
     snprintf(init_buf, sizeof(init_buf), "[TURNO INICIADO] Guardia de hoy:\n > %s al frente del CPD.", game_get_current_guardia(g));
@@ -746,8 +848,7 @@ static void lock_current_piece(Game *g) {
     // Track pieces dropped and trigger guardia change every 25 pieces
     g->pieces_dropped++;
     if (g->pieces_dropped % 25 == 0) {
-        int new_idx = (g->pieces_dropped / 25) % 4;
-        const char *new_guard = game_get_guardia_name(new_idx);
+        const char *new_guard = game_get_current_guardia(g);
         char toast_buf[64];
         snprintf(toast_buf, sizeof(toast_buf), "¡RELEVO: %s!", new_guard);
         game_set_toast(g, toast_buf, 0, 255, 200);
@@ -797,28 +898,33 @@ static void finish_clearing_lines(Game *g) {
 
     if (cleared == 1) {
         line_pts = 100 * g->level;
-        game_set_toast(g, "¡CABLE ENCHUFADO!", 0, 240, 240);
-        game_add_ticker(g, "[URGENCIAS] Ticket cerrado:\n > El monitor funciona si se enchufa.");
+        const ClearMsg *m = pick_clear_msg(SINGLE_CLEAR_MSGS, CLEAR_MSG_COUNT(SINGLE_CLEAR_MSGS));
+        game_set_toast(g, m->toast, m->r, m->g, m->b);
+        game_add_ticker(g, m->ticker);
         g->back_to_back = false;
     } else if (cleared == 2) {
         line_pts = 300 * g->level;
-        game_set_toast(g, "¡REINICIO MILAGROSO!", 40, 220, 70);
-        game_add_ticker(g, "[MAGIA TIC] Apagar y encender:\n > Salvo el turno una vez mas.");
+        const ClearMsg *m = pick_clear_msg(DOUBLE_CLEAR_MSGS, CLEAR_MSG_COUNT(DOUBLE_CLEAR_MSGS));
+        game_set_toast(g, m->toast, m->r, m->g, m->b);
+        game_add_ticker(g, m->ticker);
         g->back_to_back = false;
     } else if (cleared == 3) {
         line_pts = 500 * g->level;
-        game_set_toast(g, "¡¡TRIPLE CAFE CON LECHE!!", 255, 170, 0);
-        game_add_ticker(g, "[CPD SANT JOAN] Despeje triple:\n > 3 marrones esquivados del tiron.");
+        const ClearMsg *m = pick_clear_msg(TRIPLE_CLEAR_MSGS, CLEAR_MSG_COUNT(TRIPLE_CLEAR_MSGS));
+        game_set_toast(g, m->toast, m->r, m->g, m->b);
+        game_add_ticker(g, m->ticker);
         g->back_to_back = false;
     } else if (cleared == 4) {
         if (g->back_to_back) {
             line_pts = 1200 * g->level;
-            game_set_toast(g, "¡¡¡HEROE DEL CPD!!!", 255, 215, 0);
-            game_add_ticker(g, "[LEYENDA] Doble Tetris seguido:\n > El turno manana debe el desayuno.");
+            const ClearMsg *m = pick_clear_msg(TETRIS_B2B_CLEAR_MSGS, CLEAR_MSG_COUNT(TETRIS_B2B_CLEAR_MSGS));
+            game_set_toast(g, m->toast, m->r, m->g, m->b);
+            game_add_ticker(g, m->ticker);
         } else {
             line_pts = 800 * g->level;
-            game_set_toast(g, "¡¡¡TETRIS DE GUARDIA!!!", 170, 45, 240);
-            game_add_ticker(g, "[HEROE CPD] ¡Tetris nocturno!:\n > Panico evitado en Sant Joan.");
+            const ClearMsg *m = pick_clear_msg(TETRIS_CLEAR_MSGS, CLEAR_MSG_COUNT(TETRIS_CLEAR_MSGS));
+            game_set_toast(g, m->toast, m->r, m->g, m->b);
+            game_add_ticker(g, m->ticker);
             g->back_to_back = true;
         }
     }
@@ -856,7 +962,7 @@ void game_update(Game *g, uint32_t delta_ms) {
     uint32_t now = SDL_GetTicks();
 
     // Telemetry updates
-    g->ecg_phase += (float)delta_ms * 0.003f;
+    g->ecg_phase += (float)delta_ms * 0.0015f; // mitad de velocidad que antes
     if (g->ecg_phase > 2000.0f) g->ecg_phase -= 2000.0f;
     g->ecg_bpm = 72.0f + 6.0f * sinf(g->ecg_phase * 0.4f) + (float)g->level * 1.5f;
     g->cpu_load = 28.0f + 15.0f * sinf(g->ecg_phase * 0.8f) + (float)g->level * 2.5f;

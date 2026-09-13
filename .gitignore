@@ -4,6 +4,14 @@ obj/
 *.pdb
 SantJoanTetris.app/
 
+# El binario/paquete de macOS solo tiene sentido si viene de un Mac real
+# (necesita firma de código para arrancar en Apple Silicon). Cruzado desde
+# Linux solo sirve para detectar errores de compilación, nunca para repartir
+# — por eso no se versiona. El de verdad sale del workflow de CI
+# (.github/workflows/build.yml, job macOS) o de `make package-mac` en un Mac.
+sant_joan_tetris_mac
+SantJoanTetris_macOS_Silicon.zip
+
 # Puntuación local persistente
 highscore.txt
 

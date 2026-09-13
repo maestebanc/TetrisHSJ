@@ -1,0 +1,129 @@
+name: Build (Linux · Windows · macOS)
+
+# Compila las tres versiones nativas en su plataforma real (o la más fiable
+# disponible) en cada push/PR, y sube los binarios como artefactos.
+#
+# El motivo de tener este workflow es precisamente el problema que se
+# reportó en la v1: el build de macOS se cruzaba desde Linux y nunca se
+# firmaba, así que "no arrancaba" en Apple Silicon sin más explicación
+# (macOS exige firma de código en binarios arm64, no es solo Gatekeeper).
+# Aquí el job de macOS corre en un runner de Apple real (macos-latest),
+# compila de forma nativa contra el SDL2 de Homebrew, reescribe la
+# dependencia del dylib a una ruta relativa (@executable_path) para que el
+# .app sea autónomo, y lo firma con una firma ad-hoc (no requiere cuenta de
+# pago de Apple). Es el equivalente a lo que haría un Mac real.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  linux:
+    name: Linux
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Instalar SDL2
+        run: sudo apt-get update && sudo apt-get install -y libsdl2-dev
+
+      - name: Compilar
+        run: make linux
+
+      - name: Comprobación básica (arranca y termina limpio con --generate-screenshots)
+        run: |
+          sudo apt-get install -y xvfb
+          xvfb-run -a ./sant_joan_tetris --generate-screenshots
+          test -f docs/screenshots/gameplay.bmp
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: SantJoanTetris-Linux
+          path: |
+            sant_joan_tetris
+            run.sh
+            assets/
+            README.md
+
+  windows:
+    name: Windows (cross-compilado con zig)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: mlugg/setup-zig@v1
+        with:
+          version: "0.13.0"
+
+      - name: Instalar windres (mingw-w64)
+        run: sudo apt-get update && sudo apt-get install -y mingw-w64
+
+      - name: Compilar y empaquetar
+        run: make package-windows WINDRES=x86_64-w64-mingw32-windres
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: SantJoanTetris-Windows
+          path: SantJoanTetris_Windows.zip
+
+  macos:
+    name: macOS (nativo + firmado ad-hoc)
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Instalar SDL2
+        run: brew install sdl2
+
+      - name: Compilar nativo y empaquetar .app firmado
+        run: make package-mac
+
+      - name: Verificar que el .app quedó firmado y sin dependencias externas
+        run: |
+          codesign --verify --deep --strict SantJoanTetris.app
+          codesign -dv SantJoanTetris.app
+          otool -L SantJoanTetris.app/Contents/MacOS/SantJoanTetris
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: SantJoanTetris-macOS
+          path: SantJoanTetris_macOS_Silicon.zip
+
+  web:
+    name: Web (comprobación de humo)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Comprobar que la página carga sin errores de consola
+        run: |
+          npm install -g playwright-chromium http-server >/dev/null 2>&1 || npm install -g http-server
+          npx --yes http-server -p 8080 . &
+          sleep 2
+          node -e "
+            const { chromium } = require('playwright-chromium');
+            (async () => {
+              const browser = await chromium.launch();
+              const page = await browser.newPage();
+              const errors = [];
+              page.on('pageerror', e => errors.push(e.message));
+              page.on('console', m => { if (m.type() === 'error') errors.push(m.text()); });
+              await page.goto('http://localhost:8080/SantJoanTetris.html');
+              await page.waitForTimeout(1500);
+              await page.keyboard.press('Enter');
+              await page.waitForTimeout(500);
+              await browser.close();
+              if (errors.length) { console.error('Errores de consola:', errors); process.exit(1); }
+              console.log('Web build OK, sin errores de consola.');
+            })();
+          "
+
+      - name: Empaquetar
+        run: make package-web
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: SantJoanTetris-Web
+          path: SantJoanTetris_Web.zip

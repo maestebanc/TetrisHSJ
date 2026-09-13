@@ -1,6 +1,5 @@
 🏥 SANT JOAN TETRIS - EDICIÓN HOSPITAL UNIVERSITARIO
 =====================================================
-Optimizado para resolución Full HD (1920 x 1080)
 Unidad de Informática y Tecnologías de la Información (TIC)
 Hospital Universitario de Sant Joan d'Alacant
 
@@ -11,7 +10,7 @@ Hospital Universitario de Sant Joan d'Alacant
 *(También puedes abrir "SantJoanTetris.html" en Edge o Chrome si lo prefieres).*
 
 📺 PANTALLA COMPLETA Y MAXIMIZAR EN WINDOWS:
-- Ahora puedes MAXIMIZAR la ventana en Windows haciendo clic en el botón Maximizar de la barra de título, arrastrándola arriba, o pulsando F11 (o Alt+Enter) para pantalla completa. El juego escala automáticamente manteniendo la nitidez y formato Full HD (1920x1080) sin distorsión.
+- Puedes MAXIMIZAR la ventana en Windows haciendo clic en el botón Maximizar de la barra de título, arrastrándola arriba, o pulsando F11 (o Alt+Enter) para pantalla completa. El juego se ajusta automáticamente al tamaño de la ventana sin distorsión.
 
 🕹️ CONTROLES DEL TURNO DE GUARDIA:
 - Flechas ← / → o teclas A / D : Mover pieza lateralmente
@@ -26,7 +25,7 @@ Hospital Universitario de Sant Joan d'Alacant
 - + / - : Subir / Bajar volumen
 - P o Esc : Pausar / Reanudar turno
 - F1 o H : Manual de supervivencia del informático de guardia
-- F12 : Guardar captura de pantalla en Full HD (screenshot_*.bmp)
+- F12 : Guardar captura de pantalla (screenshot_*.bmp)
 - R : Reiniciar guardia
 
 💡 REGLAS DE ORO DEL INFORMÁTICO DE SANT JOAN:
@@ -35,3 +34,4 @@ Hospital Universitario de Sant Joan d'Alacant
 3. La cafetera del CPD tiene prioridad asistencial absoluta.
 
 (Prompt original: Miguel Ángel Esteban - aka MA - 2026).
+(Rediseño y desarrollo asistido con Claude, Anthropic - 2026).

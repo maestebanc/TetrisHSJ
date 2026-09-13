@@ -2,7 +2,7 @@
 <html lang="es">
 <head>
   <meta charset="UTF-8">
-  <title>Sant Joan Tetris - Hospital Universitario de Sant Joan d'Alacant (1080p)</title>
+  <title>Sant Joan Tetris - Hospital Universitario de Sant Joan d'Alacant</title>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; user-select: none; }
     body, html {
@@ -76,26 +76,258 @@
       "10. Guardia Nocturna TIC", "11. Sant Joan 100% Uptime"
     ];
 
-    // Audio Web Synthesizer
+    // ============================================================
+    // Audio: motor de síntesis portado directamente de src/audio.c
+    // (la versión nativa de Linux/Windows/Mac), para que suene igual
+    // en todas las plataformas: mismo bombo/caja/hi-hat con sidechain,
+    // mismo bajo con filtro paso-bajo, mismos acordes pad, y las mismas
+    // melodías de 64 pasos por pista.
+    // ============================================================
     let audioCtx = null;
-    let isMuted = false;
+    let musicNode = null;
     let masterVol = 0.35;
     let trackIndex = 0;
+    let musicEnabled = true; // tecla M: igual que audio_toggle_music() en C, no afecta a los SFX
     const TRACK_NAMES = [
       "Cyber Sant Joan (Synthwave 124 BPM)",
       "Guardia de Noche - CPD (Techno 136 BPM)",
       "Ritmo Cardíaco - UCI (Medical Tech 120 BPM)"
     ];
+    const BASE_BPM = [124, 136, 120];
+    // Se ajusta a la frecuencia real del AudioContext en initAudio() — no
+    // todos los navegadores/sistemas usan 44100 Hz (muchos usan 48000), y
+    // si se asume un valor fijo distinto del real, todo el tempo y el
+    // tono del motor de música salen acelerados o desafinados.
+    let SAMPLE_RATE = 44100;
+    const TWO_PI = Math.PI * 2;
+
+    const NOTE = {
+      C2: 65.41, D2: 73.42, Eb2: 77.78, E2: 82.41, F2: 87.31, G2: 98.00, Ab2: 103.83, A2: 110.00, Bb2: 116.54, B2: 123.47,
+      C3: 130.81, Db3: 138.59, D3: 146.83, Eb3: 155.56, E3: 164.81, F3: 174.61, G3: 196.00, Ab3: 207.65, A3: 220.00, Bb3: 233.08, B3: 246.94,
+      C4: 261.63, Db4: 277.18, D4: 293.66, Eb4: 311.13, E4: 329.63, F4: 349.23, G4: 392.00, Ab4: 415.30, A4: 440.00, Bb4: 466.16, B4: 493.88,
+      C5: 523.25, Db5: 554.37, D5: 587.33, Eb5: 622.25, E5: 659.25, F5: 698.46, G5: 783.99, A5: 880.00
+    };
+
+    // Melodías lead a lo largo de 64 corcheas (idénticas a TRACK0/1/2_LEAD en audio.c)
+    const TRACK0_LEAD = [
+      NOTE.D4,0,NOTE.F4,0,NOTE.A4,0,NOTE.D5,NOTE.C5, NOTE.A4,0,NOTE.F4,0,NOTE.G4,0,NOTE.F4,NOTE.E4,
+      NOTE.D4,0,NOTE.F4,0,NOTE.Bb4,0,NOTE.D5,0,       NOTE.C5,0,NOTE.Bb4,0,NOTE.A4,0,NOTE.F4,0,
+      NOTE.C4,0,NOTE.F4,0,NOTE.A4,0,NOTE.C5,0,        NOTE.D5,0,NOTE.C5,0,NOTE.A4,0,NOTE.F4,0,
+      NOTE.G4,0,NOTE.C5,0,NOTE.E5,0,NOTE.D5,NOTE.C5,  NOTE.B4,0,NOTE.G4,0,NOTE.E4,0,NOTE.F4,NOTE.E4
+    ];
+    const TRACK1_LEAD = [
+      NOTE.F4,NOTE.F4,0,NOTE.Ab4,NOTE.C5,0,NOTE.Ab4,0,   NOTE.F4,0,NOTE.C5,0,NOTE.Eb5,0,NOTE.C5,0,
+      NOTE.Db4,NOTE.Db4,0,NOTE.F4,NOTE.Ab4,0,NOTE.F4,0,  NOTE.Db5,0,NOTE.C5,0,NOTE.Ab4,0,NOTE.F4,0,
+      NOTE.Ab4,NOTE.Ab4,0,NOTE.C5,NOTE.Eb5,0,NOTE.C5,0,  NOTE.Eb5,0,NOTE.C5,0,NOTE.Ab4,0,NOTE.Eb4,0,
+      NOTE.Eb4,NOTE.Eb4,0,NOTE.G4,NOTE.Bb4,0,NOTE.G4,0,  NOTE.Eb5,0,NOTE.D5,0,NOTE.Bb4,0,NOTE.G4,0
+    ];
+    const TRACK2_LEAD = [
+      NOTE.A4,0,0,NOTE.C5,0,NOTE.E5,0,NOTE.D5,     0,NOTE.C5,0,NOTE.A4,0,0,NOTE.G4,0,
+      NOTE.E4,0,0,NOTE.G4,0,NOTE.B4,0,NOTE.A4,     0,NOTE.G4,0,NOTE.E4,0,0,NOTE.F4,0,
+      NOTE.F4,0,0,NOTE.A4,0,NOTE.C5,0,NOTE.D5,     0,NOTE.C5,0,NOTE.A4,0,NOTE.C5,0,0,
+      NOTE.G4,0,0,NOTE.B4,0,NOTE.D5,0,NOTE.C5,     0,NOTE.B4,0,NOTE.G4,0,NOTE.E4,0,0
+    ];
+    const TRACK_LEADS = [TRACK0_LEAD, TRACK1_LEAD, TRACK2_LEAD];
+
+    const BASS_PROGRESSION = [
+      [NOTE.D2, NOTE.Bb2, NOTE.F2, NOTE.C2],
+      [NOTE.F2, NOTE.Db3, NOTE.Ab2, NOTE.Eb2],
+      [NOTE.A2, NOTE.E2, NOTE.F2, NOTE.G2]
+    ];
+    const PAD_PROGRESSION = [
+      [[NOTE.D3,NOTE.F3,NOTE.A3], [NOTE.Bb2,NOTE.D3,NOTE.F3], [NOTE.F2,NOTE.A3,NOTE.C4], [NOTE.C3,NOTE.E3,NOTE.G3]],
+      [[NOTE.F3,NOTE.Ab3,NOTE.C4], [NOTE.Db3,NOTE.F3,NOTE.Ab3], [NOTE.Ab2,NOTE.C3,NOTE.Eb3], [NOTE.Eb3,NOTE.G3,NOTE.Bb3]],
+      [[NOTE.A3,NOTE.C4,NOTE.E4], [NOTE.E3,NOTE.G3,NOTE.B3], [NOTE.F3,NOTE.A3,NOTE.C4], [NOTE.G3,NOTE.B3,NOTE.D4]]
+    ];
+
+    let noiseSeed = 0x12345678;
+    function nextNoise() {
+      noiseSeed = (Math.imul(noiseSeed, 1664525) + 1013904223) >>> 0;
+      return ((noiseSeed >>> 16) / 32768.0) - 1.0;
+    }
+    function softClip(x) {
+      if (x > 1.2) return 0.9;
+      if (x < -1.2) return -0.9;
+      return x - (x * x * x) * 0.18;
+    }
+
+    let sampleCounter = 0;
+    let bassPhase = 0, leadPhase = 0, audioEcgPhase = 0;
+    let padPhases = [0, 0, 0];
+    let lpOut1 = 0, lpOut2 = 0;
+
+    // Visualizador de 8 bandas (kick, bajo, caja, pad, lead, hi-hat, ecg, total)
+    // con el mismo filtro de ataque/decay que audio_get_visualizer() en C.
+    let visLevels = [0, 0, 0, 0, 0, 0, 0, 0];
+
+    function audioProcess(e) {
+      const outL = e.outputBuffer.getChannelData(0);
+      const outR = e.outputBuffer.getChannelData(1);
+      const n = outL.length;
+
+      const tempoMult = Math.min(1.35, 1 + (level - 1) * 0.032);
+      const bpm = BASE_BPM[trackIndex] * tempoMult;
+      const sp16 = (60.0 / bpm) / 4.0;
+      let samplesPer16th = Math.floor(sp16 * SAMPLE_RATE);
+      if (samplesPer16th < 100) samplesPer16th = 100;
+
+      const visEnergy = [0, 0, 0, 0, 0, 0, 0, 0];
+
+      for (let s = 0; s < n; s++) {
+        let mixL = 0, mixR = 0;
+
+        if (musicEnabled) {
+          const curSample = sampleCounter;
+          const stepIdx = Math.floor(curSample / samplesPer16th) % 64;
+          const stepSample = curSample % samplesPer16th;
+          const stepT = stepSample / SAMPLE_RATE;
+          const beatSample = curSample % (samplesPer16th * 4);
+          const beatT = beatSample / SAMPLE_RATE;
+
+          // Bombo (kick 808 con caída de tono)
+          let kick = 0;
+          if (beatT < 0.22) {
+            const kEnv = Math.exp(-beatT * 22);
+            const kFreq = 160 * Math.exp(-beatT * 32) + 40;
+            const kClick = (beatT < 0.005) ? nextNoise() * 0.4 : 0;
+            kick = (Math.sin(TWO_PI * kFreq * beatT) + kClick) * kEnv * 0.85;
+          }
+
+          // Caja / clap en los tiempos 2 y 4
+          let snare = 0;
+          const beatInBar = stepIdx % 16;
+          if ((beatInBar >= 4 && beatInBar < 8) || (beatInBar >= 12 && beatInBar < 16)) {
+            const sStep = (beatInBar < 8) ? (beatInBar - 4) : (beatInBar - 12);
+            const sT = (sStep * samplesPer16th + stepSample) / SAMPLE_RATE;
+            if (sT < 0.20) {
+              const sEnv = Math.exp(-sT * 24);
+              const sNoise = nextNoise();
+              const sBody = Math.sin(TWO_PI * 190 * sT) * Math.exp(-sT * 35);
+              snare = (sNoise * 0.65 + sBody * 0.35) * sEnv * 0.60;
+            }
+          }
+
+          // Hi-hats
+          let hihat = 0;
+          if (stepT < 0.08) {
+            const isOpen = (stepIdx % 4 === 2);
+            const hDecay = isOpen ? 18 : 75;
+            const hEnv = Math.exp(-stepT * hDecay);
+            const hVol = isOpen ? 0.30 : ((stepIdx % 2 === 1) ? 0.22 : 0.12);
+            hihat = nextNoise() * hEnv * hVol;
+          }
+
+          const sidechain = 0.20 + 0.80 * Math.min(1.0, beatT * 8.0);
+
+          // Bajo rodante con filtro paso-bajo
+          const bar = Math.floor(stepIdx / 16);
+          let bassFreq = BASS_PROGRESSION[trackIndex][bar];
+          if (stepIdx % 4 === 2 || stepIdx % 4 === 3) bassFreq *= 2.0;
+
+          bassPhase += bassFreq / SAMPLE_RATE;
+          if (bassPhase > 1) bassPhase -= 1;
+          const saw = 2 * bassPhase - 1;
+          const sub = (((bassPhase * 0.5) % 1) < 0.5) ? 0.7 : -0.7;
+          const bassRaw = saw * 0.6 + sub * 0.4;
+
+          const filterEnv = 0.08 + 0.18 * Math.exp(-stepT * 14);
+          lpOut1 += filterEnv * (bassRaw - lpOut1);
+          lpOut2 += filterEnv * (lpOut1 - lpOut2);
+          const bass = lpOut2 * sidechain * 0.45;
+
+          // Acordes pad de 3 voces, detuned y panoramizados
+          let padL = 0, padR = 0;
+          const chordNotes = PAD_PROGRESSION[trackIndex][bar];
+          for (let ch = 0; ch < 3; ch++) {
+            padPhases[ch] += chordNotes[ch] / SAMPLE_RATE;
+            if (padPhases[ch] > 1) padPhases[ch] -= 1;
+            const pSaw = 2 * padPhases[ch] - 1;
+            const pPan = ch === 0 ? 0.3 : (ch === 1 ? 0.5 : 0.7);
+            padL += pSaw * (1 - pPan);
+            padR += pSaw * pPan;
+          }
+          padL *= 0.08 * sidechain;
+          padR *= 0.08 * sidechain;
+
+          // Melodía lead
+          let lead = 0;
+          const noteF = TRACK_LEADS[trackIndex][stepIdx];
+          if (noteF > 20) {
+            const leadEnv = Math.exp(-stepT * 6);
+            leadPhase += noteF / SAMPLE_RATE;
+            if (leadPhase > 1) leadPhase -= 1;
+            const lSaw = 2 * leadPhase - 1;
+            const lPulse = (leadPhase < 0.4) ? 0.6 : -0.6;
+            lead = (lSaw * 0.6 + lPulse * 0.4) * leadEnv * 0.22;
+          }
+
+          // Pitido ECG sincronizado (motivo de telemetría hospitalaria)
+          let ecgSound = 0;
+          if (stepIdx === 0 || stepIdx === 32) {
+            if (stepT < 0.06) {
+              audioEcgPhase += 1000.0 / SAMPLE_RATE;
+              if (audioEcgPhase > 1) audioEcgPhase -= 1;
+              const eEnv = Math.exp(-stepT * 45);
+              ecgSound = Math.sin(TWO_PI * audioEcgPhase) * eEnv * 0.18;
+            }
+          }
+
+          mixL = kick + snare * 0.8 + hihat * 0.7 + bass + padL + lead * 0.7 + ecgSound;
+          mixR = kick + snare * 0.8 + hihat * 0.9 + bass + padR + lead * 0.7 + ecgSound;
+
+          visEnergy[0] += Math.abs(kick);
+          visEnergy[1] += Math.abs(bass);
+          visEnergy[2] += Math.abs(snare);
+          visEnergy[3] += Math.abs(padL + padR);
+          visEnergy[4] += Math.abs(lead);
+          visEnergy[5] += Math.abs(hihat);
+          visEnergy[6] += Math.abs(ecgSound);
+          visEnergy[7] += Math.abs(mixL + mixR) * 0.3;
+
+          sampleCounter++;
+        }
+
+        const totalL = softClip(mixL * masterVol);
+        const totalR = softClip(mixR * masterVol);
+        outL[s] = totalL;
+        outR[s] = totalR;
+      }
+
+      for (let b = 0; b < 8; b++) {
+        let avg = (visEnergy[b] / n) * 3.5;
+        if (avg > 1.0) avg = 1.0;
+        if (avg > visLevels[b]) visLevels[b] = avg;
+        else visLevels[b] = Math.max(0, visLevels[b] - 0.08);
+      }
+    }
 
     function initAudio() {
       if (!audioCtx) {
         audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-        startMusicLoop();
+        SAMPLE_RATE = audioCtx.sampleRate;
+        // ScriptProcessorNode está obsoleto en favor de AudioWorklet, pero se
+        // usa aquí a propósito: funciona en todos los navegadores sin cargar
+        // un módulo aparte, así que sigue abriendo con solo hacer doble clic
+        // en el .html (incluso por file://) igual que el resto del juego.
+        musicNode = audioCtx.createScriptProcessor(1024, 0, 2);
+        musicNode.onaudioprocess = audioProcess;
+        musicNode.connect(audioCtx.destination);
+      }
+      // Los navegadores crean el AudioContext "suspended" salvo que se
+      // reanude explícitamente tras un gesto del usuario; sin esto el
+      // grafo de audio se construye pero nunca llega a sonar. Se comprueba
+      // en cada pulsación por si el navegador lo vuelve a suspender solo
+      // (p. ej. al volver de segundo plano).
+      if (audioCtx.state === 'suspended') {
+        audioCtx.resume();
       }
     }
 
+    // Efectos de sonido puntuales (no forman parte del audioProcess de
+    // música: igual que en la versión nativa, silenciar la música con M
+    // no afecta a los SFX, solo el volumen general los controla a ambos).
     function playTone(freq, type = 'sine', duration = 0.15, vol = 0.25) {
-      if (!audioCtx || isMuted) return;
+      if (!audioCtx) return;
       try {
         const osc = audioCtx.createOscillator();
         const gain = audioCtx.createGain();
@@ -110,19 +342,6 @@
       } catch(e) {}
     }
 
-    let musicStep = 0;
-    function startMusicLoop() {
-      setInterval(() => {
-        if (!audioCtx || isMuted) return;
-        musicStep++;
-        const bassNotes = [55, 55, 65, 55, 73, 55, 82, 73];
-        const freq = bassNotes[musicStep % bassNotes.length];
-        if (musicStep % 2 === 0) playTone(freq, 'sawtooth', 0.12, 0.14);
-        if (musicStep % 4 === 0) playTone(90, 'triangle', 0.16, 0.30);
-        if (musicStep % 4 === 2) playTone(880, 'sine', 0.05, 0.10);
-      }, 120);
-    }
-
     // Game Logic
     const BOARD_W = 10;
     const BOARD_H = 20;
@@ -135,6 +354,7 @@
     let score = 0, lines = 0, level = 1;
     let highscore = parseInt(localStorage.getItem('santjoan_highscore') || '0');
     let gameState = 'TITLE';
+    let menuSelected = 0; // 0 = comenzar turno, 1 = manual
     let lastFall = 0;
     let particles = [];
     let toastText = "", toastAlpha = 0;
@@ -142,10 +362,56 @@
     let shiftStart = Date.now();
     let lastTickerTime = 0;
     let piecesDropped = 0;
+    let backToBack = false;
+
+    // Mensajes de línea completada: varios por categoría, elegidos al azar,
+    // para que no salga siempre el mismo texto (igual que en la versión nativa).
+    const SINGLE_CLEAR_MSGS = [
+      ["¡CABLE ENCHUFADO!", "[URGENCIAS] Ticket cerrado: El monitor funciona si se enchufa."],
+      ["¡TICKET CERRADO!", "[SOPORTE] Incidencia resuelta: Apagar y encender, otra vez."],
+      ["¡UN MARRÓN MENOS!", "[PLANTA] Aviso solucionado: Era el cable de red, como siempre."],
+      ["¡BUEN REFLEJO!", "[TRIAJE] Cola despejada: Un paciente menos esperando."],
+      ["¡RESUELTO EN SEGUNDOS!", "[CPD] Ticket cerrado: Ni tiempo de sentarse."],
+      ["¡OTRO MENOS!", "[ADMISIÓN] Incidencia cerrada: La cola de tickets respira."]
+    ];
+    const DOUBLE_CLEAR_MSGS = [
+      ["¡REINICIO MILAGROSO!", "[MAGIA TIC] Apagar y encender: Salvó el turno una vez más."],
+      ["¡DOBLE RESCATE!", "[URGENCIAS] Dos tickets a la vez: Multitarea de manual."],
+      ["¡PAR PERFECTO!", "[SISTEMAS] Doble incidencia: Cerradas antes del café."],
+      ["¡COMBO DE GUARDIA!", "[SOPORTE] Dos avisos seguidos: El turno va que vuela."],
+      ["¡DOS POR EL PRECIO DE UNO!", "[CPD] Doble ticket cerrado: Racha de buena suerte."]
+    ];
+    const TRIPLE_CLEAR_MSGS = [
+      ["¡¡TRIPLE CAFÉ CON LECHE!!", "[CPD SANT JOAN] Despeje triple: 3 marrones esquivados del tirón."],
+      ["¡¡RACHA IMPARABLE!!", "[URGENCIAS] Triple ticket cerrado: El turno lo va a celebrar."],
+      ["¡¡TRIPLE SALVAMENTO!!", "[SISTEMAS] Tres avisos a la vez: Nadie se lo cree en dirección."],
+      ["¡¡GUARDIA DE ORO!!", "[CPD] Triple incidencia resuelta: Se merece una medalla."],
+      ["¡¡TRIPLETE NOCTURNO!!", "[SOPORTE] Tres tickets seguidos: El café ya no hace falta."]
+    ];
+    const TETRIS_CLEAR_MSGS = [
+      ["¡¡¡TETRIS DE GUARDIA!!!", "[HÉROE CPD] ¡Tetris nocturno!: Pánico evitado en Sant Joan."],
+      ["¡¡¡CUATRO DE UNA!!!", "[URGENCIAS] Cuádruple ticket: Se comenta en la sala de café."],
+      ["¡¡¡DESPEJE TOTAL!!!", "[CPD SANT JOAN] Tetris limpio: Dirección pide una repetición."],
+      ["¡¡¡NOCHE LEGENDARIA!!!", "[SISTEMAS] Cuatro líneas de golpe: Se queda para la posteridad."]
+    ];
+    const TETRIS_B2B_CLEAR_MSGS = [
+      ["¡¡¡HÉROE DEL CPD!!!", "[LEYENDA] Doble Tetris seguido: El turno de mañana debe el desayuno."],
+      ["¡¡¡IMPARABLE!!!", "[LEYENDA] Otro Tetris seguido: Va a entrar en el libro de guardias."],
+      ["¡¡¡RACHA DE LEYENDA!!!", "[CPD SANT JOAN] Back-to-back Tetris: Se comenta durante semanas."]
+    ];
+    function pickClearMsg(pool) {
+      return pool[Math.floor(Math.random() * pool.length)];
+    }
 
     const GUARDIAS = ["Jose María", "Marichu", "Diego", "Ernesto"];
+    // Quién abre el turno cambia cada partida (se sortea en initGame); a
+    // partir de ahí se sigue el orden normal de la lista.
+    let guardiaOffset = 0;
+    function getCurrentGuardiaIndex() {
+      return (Math.floor(piecesDropped / 25) + guardiaOffset) % GUARDIAS.length;
+    }
     function getCurrentGuardia() {
-      return GUARDIAS[Math.floor(piecesDropped / 25) % GUARDIAS.length];
+      return GUARDIAS[getCurrentGuardiaIndex()];
     }
 
     const GUARDIA_TICKER_TEMPLATES = [
@@ -358,7 +624,56 @@
       "[URGENCIAS 06:58] Fin de guardia: Sobrevivimos una noche mas.",
       "[SISTEMAS 07:00] Turno entrante: Informaticos de manana al relevo.",
       "[CPD SOTANO 1] Ultimo cafe: Mision cumplida en Sant Joan.",
-      "[HOSPITAL 07:02] Todo en calma: Servidores en pie. Buen trabajo."
+      "[HOSPITAL 07:02] Todo en calma: Servidores en pie. Buen trabajo.",
+
+      // Aplicaciones reales del hospital: Orion Clinic, Orion Logis, Orion RIS,
+      // SISCOL (turnos por kiosko + pantallas de llamada), QUENDA (gestiona
+      // las pantallas de SISCOL), IRIS, Terminal y Power Iris.
+      "[ADMISION 01:16] Orion Clinic no arranca: Doble clic en el icono de Word.",
+      "[FARMACIA 02:05] Orion Logis atascado: Pedido de gasas duplicado x40.",
+      "[RADIOLOGIA 02:38] Orion RIS sin imagenes: El PACS seguia procesando cafe.",
+      "[SALA ESPERA 03:02] SISCOL no llama a nadie: El kiosko imprimia turnos en blanco.",
+      "[CONSULTAS 03:20] QUENDA no actualiza pantalla: Servicio reiniciado en 8 segundos.",
+      "[TRIAJE 03:44] Kiosko de SISCOL colgado: Alguien pulso 'Turno' 20 veces.",
+      "[QUIROFANO 04:05] IRIS no carga estudio: Cache local lleno de fotos de gatos.",
+      "[SISTEMAS 04:22] Terminal remoto caido: Sesion RDP zombie desde ayer.",
+      "[DIRECCION 04:50] Power Iris sin licencia: Renovada antes de que lo note nadie.",
+      "[URGENCIAS 05:08] Orion Clinic muy lento: 300 pacientes abiertos a la vez.",
+      "[FARMACIA 05:20] Orion Logis 'sin stock': El almacen tenia el filtro puesto.",
+      "[SALA ESPERA 05:36] Pantalla de SISCOL en negro: El HDMI se habia salido un poco.",
+      "[RADIOLOGIA 05:50] Orion RIS duplica informes: El radiologo le dio doble a Enter.",
+      "[ADMISION 06:02] QUENDA no llama al 47: El paciente 47 se habia ido a fumar.",
+      "[CONSULTAS 06:10] IRIS con lupa gigante: Zoom al 800% sin querer.",
+      "[LABORATORIO 06:22] Power Iris no imprime: La cola tenia 200 etiquetas.",
+      "[UCI 01:44] Terminal de guardia congelado: El raton necesitaba pilas nuevas.",
+      "[SOPORTE 02:52] '¿Que es SISCOL?': 'El que llama a los pacientes.'",
+      "[TRIAJE 03:12] Kiosko no da papelito: Rollo de ticket puesto al reves.",
+      "[FARMACIA 04:02] Orion Logis pide firma: El lapiz optico sin punta.",
+      "[RADIOLOGIA 04:48] IRIS y RIS discuten: Cuestion de sincronizar relojes.",
+      "[ADMISION 05:14] QUENDA repite el mismo numero: Alguien lo habia vuelto a pedir.",
+      "[SISTEMAS 05:40] Orion Clinic en mantenimiento: Ventana nocturna sin incidencias.",
+      "[SALA ESPERA 06:16] SISCOL sin sonido: Altavoz del pasillo desconectado.",
+
+      "[URGENCIAS 01:05] Grapadora atascada: No es de periféricos, es papelería.",
+      "[CONSULTAS 01:20] 'No imprime nada': La impresora estaba en otra consulta.",
+      "[QUIRÓFANO 01:35] Bisturí eléctrico: No usa Bluetooth, tranquilos.",
+      "[TRIAJE 01:50] Bolígrafo sin tinta: Ticket cerrado con otro boli.",
+      "[FARMACIA 02:10] Balanza de precisión: Calibrada a las 3 de la mañana.",
+      "[SOPORTE 02:25] '¿Por qué parpadea?': Es el salvapantallas, tranquilo.",
+      "[CPD SÓTANO 1] Ventilador del rack: Cambiado antes de que chirríe.",
+      "[UCI 02:50] Alarma silenciada: Por error, ya está reactivada.",
+      "[RADIOLOGÍA 03:10] Chaleco plomado: No interfiere con el Wi-Fi.",
+      "[ADMISIÓN 03:30] Cajero de pagos: Atascado con una moneda de 2 euros.",
+      "[PLANTA 3 03:50] Cargador de móvil: Enchufado a la toma correcta al final.",
+      "[LABORATORIO 04:10] Microscopio digital: Cable HDMI cambiado.",
+      "[QUIRÓFANO 04:25] Reloj de pared: Pilas cambiadas en plena guardia.",
+      "[CONSULTAS 04:40] 'No veo el cursor': Estaba en la otra pantalla.",
+      "[SISTEMAS 04:55] Backup incremental: Completado sin fallos.",
+      "[URGENCIAS 05:10] Camilla eléctrica: El motor no lleva firmware.",
+      "[FARMACIA 05:25] Etiqueta borrosa: Cartucho de tinta cambiado.",
+      "[TRIAJE 05:40] Báscula digital: Puesta a cero correctamente.",
+      "[SOPORTE 05:55] '¿Reinicio el router?': Mejor esperar al cambio de turno.",
+      "[CPD SÓTANO 1] Última ronda de café: Combustible para el amanecer."
     ];
 
     function triggerAutoIncident() {
@@ -412,6 +727,8 @@
       lines = 0;
       level = 1;
       piecesDropped = 0;
+      backToBack = false;
+      guardiaOffset = Math.floor(Math.random() * GUARDIAS.length);
       shiftStart = Date.now();
       lastTickerTime = Date.now();
       spawnPiece();
@@ -552,21 +869,36 @@
         const oldLevel = level;
         lines += cleared;
         level = Math.floor(lines / 10) + 1;
-        const pts = [0, 100, 300, 500, 800][cleared] * level;
-        score += pts;
         playTone(cleared === 4 ? 880 : 660, 'sine', 0.25, 0.35);
 
-        const toasts = ["", "¡CABLE ENCHUFADO!", "¡REINICIO MILAGROSO!", "¡¡TRIPLE CAFÉ CON LECHE!!", "¡¡¡TETRIS DE GUARDIA!!!"];
-        setToast(toasts[cleared]);
+        let pts;
+        let msgPair;
+        if (cleared === 1) {
+          pts = 100 * level;
+          msgPair = pickClearMsg(SINGLE_CLEAR_MSGS);
+          backToBack = false;
+        } else if (cleared === 2) {
+          pts = 300 * level;
+          msgPair = pickClearMsg(DOUBLE_CLEAR_MSGS);
+          backToBack = false;
+        } else if (cleared === 3) {
+          pts = 500 * level;
+          msgPair = pickClearMsg(TRIPLE_CLEAR_MSGS);
+          backToBack = false;
+        } else {
+          if (backToBack) {
+            pts = 1200 * level;
+            msgPair = pickClearMsg(TETRIS_B2B_CLEAR_MSGS);
+          } else {
+            pts = 800 * level;
+            msgPair = pickClearMsg(TETRIS_CLEAR_MSGS);
+            backToBack = true;
+          }
+        }
+        score += pts;
 
-        const msgs = [
-          "",
-          "[URGENCIAS] Ticket cerrado: El monitor funciona si se enchufa.",
-          "[MAGIA TIC] Apagar y encender: Salvo el turno una vez más.",
-          "[CPD SANT JOAN] Despeje triple: 3 marrones esquivados del tirón.",
-          "[HÉROE CPD] ¡Tetris nocturno!: Pánico evitado en Sant Joan."
-        ];
-        addTicker(msgs[cleared]);
+        setToast(msgPair[0]);
+        addTicker(msgPair[1]);
 
         if (level > oldLevel) {
           setToast(`¡NIVEL ${level}: ${DEPARTMENTS[Math.min(level - 1, DEPARTMENTS.length - 1)]}!`);
@@ -592,8 +924,22 @@
     window.addEventListener('keydown', (e) => {
       initAudio();
       if (gameState === 'TITLE') {
-        if (e.key === 'Enter' || e.key === ' ' || e.key === '1') initGame();
-        else if (e.key === '2' || e.key === 'h' || e.key === 'F1') gameState = 'ABOUT';
+        if (e.key === 'ArrowUp' || e.key === 'w' || e.key === 'W') {
+          menuSelected = (menuSelected + 1) % 2;
+        } else if (e.key === 'ArrowDown' || e.key === 's' || e.key === 'S') {
+          menuSelected = (menuSelected + 1) % 2;
+        } else if (e.key === '1') {
+          menuSelected = 0;
+          initGame();
+        } else if (e.key === '2') {
+          menuSelected = 1;
+          gameState = 'ABOUT';
+        } else if (e.key === 'Enter' || e.key === ' ') {
+          if (menuSelected === 0) initGame();
+          else gameState = 'ABOUT';
+        } else if (e.key === 'h' || e.key === 'F1') {
+          gameState = 'ABOUT';
+        }
         return;
       }
       if (gameState === 'ABOUT') {
@@ -620,43 +966,297 @@
         case 'c': case 'Shift': hold(); break;
         case 'p': case 'Escape': gameState = 'PAUSE'; break;
         case 'r': initGame(); break;
-        case 'm': isMuted = !isMuted; setToast(isMuted ? "MÚSICA: SILENCIO" : "MÚSICA: ACTIVA"); break;
+        case 'm': musicEnabled = !musicEnabled; setToast(musicEnabled ? "MÚSICA: ACTIVA" : "MÚSICA: SILENCIO"); break;
         case 't': trackIndex = (trackIndex + 1) % 3; setToast(TRACK_NAMES[trackIndex]); break;
       }
     });
 
-    // Drawing Helpers on 1920x1080 Canvas
+    // ============================================================
+    // Fuente de píxeles 8x9, portada bit a bit de src/font.c, para que la
+    // tipografía sea exactamente la misma que en Linux/Windows/Mac (en vez
+    // de una fuente del sistema como Segoe UI, que no pega nada con el
+    // resto del look retro/terminal).
+    // ============================================================
+    const FONT_DATA = [
+      [0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00,0x00],
+      [0x18,0x18,0x18,0x18,0x18,0x00,0x18,0x00,0x00],
+      [0x66,0x66,0x24,0x00,0x00,0x00,0x00,0x00,0x00],
+      [0x36,0x36,0x7F,0x36,0x7F,0x36,0x36,0x00,0x00],
+      [0x18,0x3E,0x60,0x3C,0x06,0x7C,0x18,0x00,0x00],
+      [0x62,0x64,0x08,0x10,0x26,0x46,0x00,0x00,0x00],
+      [0x38,0x44,0x38,0x54,0x4A,0x44,0x3A,0x00,0x00],
+      [0x18,0x18,0x08,0x00,0x00,0x00,0x00,0x00,0x00],
+      [0x0C,0x18,0x30,0x30,0x30,0x18,0x0C,0x00,0x00],
+      [0x30,0x18,0x0C,0x0C,0x0C,0x18,0x30,0x00,0x00],
+      [0x00,0x66,0x3C,0xFF,0x3C,0x66,0x00,0x00,0x00],
+      [0x00,0x18,0x18,0x7E,0x18,0x18,0x00,0x00,0x00],
+      [0x00,0x00,0x00,0x00,0x00,0x18,0x18,0x08,0x10],
+      [0x00,0x00,0x00,0x7E,0x00,0x00,0x00,0x00,0x00],
+      [0x00,0x00,0x00,0x00,0x00,0x18,0x18,0x00,0x00],
+      [0x02,0x04,0x08,0x10,0x20,0x40,0x80,0x00,0x00],
+      [0x3C,0x66,0x6E,0x76,0x66,0x66,0x3C,0x00,0x00],
+      [0x18,0x38,0x18,0x18,0x18,0x18,0x7E,0x00,0x00],
+      [0x3C,0x66,0x06,0x0C,0x18,0x30,0x7E,0x00,0x00],
+      [0x3C,0x66,0x06,0x1C,0x06,0x66,0x3C,0x00,0x00],
+      [0x0C,0x1C,0x34,0x64,0x7E,0x0C,0x0C,0x00,0x00],
+      [0x7E,0x60,0x7C,0x06,0x06,0x66,0x3C,0x00,0x00],
+      [0x1C,0x30,0x60,0x7C,0x66,0x66,0x3C,0x00,0x00],
+      [0x7E,0x06,0x0C,0x18,0x30,0x30,0x30,0x00,0x00],
+      [0x3C,0x66,0x66,0x3C,0x66,0x66,0x3C,0x00,0x00],
+      [0x3C,0x66,0x66,0x3E,0x06,0x0C,0x38,0x00,0x00],
+      [0x00,0x18,0x18,0x00,0x18,0x18,0x00,0x00,0x00],
+      [0x00,0x18,0x18,0x00,0x18,0x18,0x08,0x10,0x00],
+      [0x0C,0x18,0x30,0x60,0x30,0x18,0x0C,0x00,0x00],
+      [0x00,0x7E,0x00,0x7E,0x00,0x00,0x00,0x00,0x00],
+      [0x30,0x18,0x0C,0x06,0x0C,0x18,0x30,0x00,0x00],
+      [0x3C,0x66,0x0C,0x18,0x18,0x00,0x18,0x00,0x00],
+      [0x3C,0x66,0x6E,0x6A,0x6E,0x60,0x3C,0x00,0x00],
+      [0x3C,0x66,0x66,0x7E,0x66,0x66,0x66,0x00,0x00],
+      [0x7C,0x66,0x66,0x7C,0x66,0x66,0x7C,0x00,0x00],
+      [0x3C,0x66,0x60,0x60,0x60,0x66,0x3C,0x00,0x00],
+      [0x78,0x6C,0x66,0x66,0x66,0x6C,0x78,0x00,0x00],
+      [0x7E,0x60,0x60,0x7C,0x60,0x60,0x7E,0x00,0x00],
+      [0x7E,0x60,0x60,0x7C,0x60,0x60,0x60,0x00,0x00],
+      [0x3C,0x66,0x60,0x6E,0x66,0x66,0x3A,0x00,0x00],
+      [0x66,0x66,0x66,0x7E,0x66,0x66,0x66,0x00,0x00],
+      [0x3C,0x18,0x18,0x18,0x18,0x18,0x3C,0x00,0x00],
+      [0x0E,0x06,0x06,0x06,0x06,0x66,0x3C,0x00,0x00],
+      [0x66,0x6C,0x78,0x70,0x78,0x6C,0x66,0x00,0x00],
+      [0x60,0x60,0x60,0x60,0x60,0x60,0x7E,0x00,0x00],
+      [0x63,0x77,0x7F,0x6B,0x63,0x63,0x63,0x00,0x00],
+      [0x66,0x76,0x7E,0x7E,0x6E,0x66,0x66,0x00,0x00],
+      [0x3C,0x66,0x66,0x66,0x66,0x66,0x3C,0x00,0x00],
+      [0x7C,0x66,0x66,0x7C,0x60,0x60,0x60,0x00,0x00],
+      [0x3C,0x66,0x66,0x66,0x6A,0x6C,0x36,0x00,0x00],
+      [0x7C,0x66,0x66,0x7C,0x78,0x6C,0x66,0x00,0x00],
+      [0x3C,0x66,0x60,0x3C,0x06,0x66,0x3C,0x00,0x00],
+      [0x7E,0x18,0x18,0x18,0x18,0x18,0x18,0x00,0x00],
+      [0x66,0x66,0x66,0x66,0x66,0x66,0x3C,0x00,0x00],
+      [0x66,0x66,0x66,0x66,0x66,0x3C,0x18,0x00,0x00],
+      [0x63,0x63,0x63,0x6B,0x7F,0x77,0x63,0x00,0x00],
+      [0x66,0x66,0x3C,0x18,0x3C,0x66,0x66,0x00,0x00],
+      [0x66,0x66,0x66,0x3C,0x18,0x18,0x18,0x00,0x00],
+      [0x7E,0x06,0x0C,0x18,0x30,0x60,0x7E,0x00,0x00],
+      [0x3C,0x30,0x30,0x30,0x30,0x30,0x3C,0x00,0x00],
+      [0x80,0x40,0x20,0x10,0x08,0x04,0x02,0x00,0x00],
+      [0x3C,0x0C,0x0C,0x0C,0x0C,0x0C,0x3C,0x00,0x00],
+      [0x18,0x3C,0x66,0x00,0x00,0x00,0x00,0x00,0x00],
+      [0x00,0x00,0x00,0x00,0x00,0x00,0x00,0xFF,0x00],
+      [0x18,0x0C,0x06,0x00,0x00,0x00,0x00,0x00,0x00],
+      [0x00,0x00,0x3C,0x06,0x3E,0x66,0x3E,0x00,0x00],
+      [0x60,0x60,0x7C,0x66,0x66,0x66,0x7C,0x00,0x00],
+      [0x00,0x00,0x3C,0x66,0x60,0x66,0x3C,0x00,0x00],
+      [0x06,0x06,0x3E,0x66,0x66,0x66,0x3E,0x00,0x00],
+      [0x00,0x00,0x3C,0x66,0x7E,0x60,0x3C,0x00,0x00],
+      [0x1C,0x30,0x78,0x30,0x30,0x30,0x30,0x00,0x00],
+      [0x00,0x00,0x3E,0x66,0x66,0x3E,0x06,0x3C,0x00],
+      [0x60,0x60,0x7C,0x66,0x66,0x66,0x66,0x00,0x00],
+      [0x18,0x00,0x38,0x18,0x18,0x18,0x3C,0x00,0x00],
+      [0x06,0x00,0x0E,0x06,0x06,0x06,0x66,0x3C,0x00],
+      [0x60,0x60,0x66,0x6C,0x78,0x6C,0x66,0x00,0x00],
+      [0x38,0x18,0x18,0x18,0x18,0x18,0x3C,0x00,0x00],
+      [0x00,0x00,0x66,0x7F,0x7F,0x6B,0x63,0x00,0x00],
+      [0x00,0x00,0x7C,0x66,0x66,0x66,0x66,0x00,0x00],
+      [0x00,0x00,0x3C,0x66,0x66,0x66,0x3C,0x00,0x00],
+      [0x00,0x00,0x7C,0x66,0x66,0x7C,0x60,0x60,0x00],
+      [0x00,0x00,0x3E,0x66,0x66,0x3E,0x06,0x06,0x00],
+      [0x00,0x00,0x7C,0x66,0x60,0x60,0x60,0x00,0x00],
+      [0x00,0x00,0x3E,0x60,0x3C,0x06,0x7C,0x00,0x00],
+      [0x18,0x18,0x7E,0x18,0x18,0x18,0x0E,0x00,0x00],
+      [0x00,0x00,0x66,0x66,0x66,0x66,0x3E,0x00,0x00],
+      [0x00,0x00,0x66,0x66,0x66,0x3C,0x18,0x00,0x00],
+      [0x00,0x00,0x63,0x6B,0x7F,0x77,0x63,0x00,0x00],
+      [0x00,0x00,0x66,0x3C,0x18,0x3C,0x66,0x00,0x00],
+      [0x00,0x00,0x66,0x66,0x66,0x3E,0x06,0x3C,0x00],
+      [0x00,0x00,0x7E,0x0C,0x18,0x30,0x7E,0x00,0x00],
+      [0x0E,0x18,0x18,0x70,0x18,0x18,0x0E,0x00,0x00],
+      [0x18,0x18,0x18,0x18,0x18,0x18,0x18,0x00,0x00],
+      [0x70,0x18,0x18,0x0E,0x18,0x18,0x70,0x00,0x00],
+      [0x76,0xDC,0x00,0x00,0x00,0x00,0x00,0x00,0x00],
+      [0x0C,0x18,0x3C,0x06,0x3E,0x66,0x3E,0x00,0x00],
+      [0x0C,0x18,0x3C,0x66,0x7E,0x60,0x3C,0x00,0x00],
+      [0x0C,0x18,0x38,0x18,0x18,0x18,0x3C,0x00,0x00],
+      [0x0C,0x18,0x3C,0x66,0x66,0x66,0x3C,0x00,0x00],
+      [0x0C,0x18,0x66,0x66,0x66,0x66,0x3E,0x00,0x00],
+      [0x76,0xDC,0x7C,0x66,0x66,0x66,0x66,0x00,0x00],
+      [0x0C,0x18,0x3C,0x66,0x7E,0x66,0x66,0x00,0x00],
+      [0x0C,0x18,0x7E,0x60,0x7C,0x60,0x7E,0x00,0x00],
+      [0x0C,0x18,0x3C,0x18,0x18,0x18,0x3C,0x00,0x00],
+      [0x0C,0x18,0x3C,0x66,0x66,0x66,0x3C,0x00,0x00],
+      [0x0C,0x18,0x66,0x66,0x66,0x66,0x3C,0x00,0x00],
+      [0x76,0xDC,0x66,0x76,0x7E,0x6E,0x66,0x00,0x00],
+      [0x00,0x18,0x00,0x18,0x18,0x30,0x66,0x3C,0x00],
+      [0x00,0x18,0x00,0x18,0x18,0x18,0x18,0x18,0x00],
+      [0x38,0x44,0x38,0x00,0x7C,0x00,0x00,0x00,0x00],
+      [0x38,0x04,0x3C,0x44,0x3C,0x00,0x7C,0x00,0x00],
+      [0x07,0x0F,0x09,0x09,0x09,0x79,0xF9,0x00,0x00],
+      [0x00,0x18,0x18,0x7E,0x7E,0x18,0x18,0x00,0x00],
+      [0x08,0x18,0x38,0x7E,0x38,0x18,0x08,0x00,0x00],
+      [0x10,0x18,0x1C,0x7E,0x1C,0x18,0x10,0x00,0x00],
+      [0x66,0xFF,0xFF,0xFF,0x7E,0x3C,0x18,0x00,0x00]
+    ];
+
+    const FONT_SPECIAL = {
+      'á':95,'é':96,'í':97,'ó':98,'ú':99,'ñ':100,'Á':101,'É':102,'Í':103,'Ó':104,'Ú':105,'Ñ':106,
+      '¿':107,'¡':108,'º':109,'ª':110,'♫':111,'♪':111,'♥':115,'←':113,'→':114
+    };
+
+    function glyphIndex(ch) {
+      const code = ch.codePointAt(0);
+      if (code >= 32 && code <= 126) return code - 32;
+      if (FONT_SPECIAL[ch] !== undefined) return FONT_SPECIAL[ch];
+      return 31; // '?'
+    }
+
+    function drawGlyph(glyph, x, y, scale) {
+      if (glyph < 0 || glyph >= FONT_DATA.length) glyph = 31;
+      const rows = FONT_DATA[glyph];
+      for (let row = 0; row < 9; row++) {
+        const bits = rows[row];
+        if (!bits) continue;
+        for (let col = 0; col < 8; col++) {
+          if (bits & (0x80 >> col)) {
+            ctx.fillRect(x + col * scale, y + row * scale, scale, scale);
+          }
+        }
+      }
+    }
+
+    function textWidth(text, scale) {
+      let maxChars = 0, cur = 0;
+      for (const ch of text) {
+        if (ch === '\n') { maxChars = Math.max(maxChars, cur); cur = 0; }
+        else cur++;
+      }
+      return Math.max(maxChars, cur) * 8 * scale;
+    }
+
+    // Reparte un texto en varias líneas que quepan en maxWidth (ajuste por
+    // palabras). Usado en el log de incidencias para que un texto largo no
+    // se salga del panel en vez de desbordar la pantalla.
+    function wrapText(text, scale, maxWidth) {
+      const words = text.split(' ');
+      const lines = [];
+      let cur = '';
+      for (const w of words) {
+        const test = cur ? cur + ' ' + w : w;
+        if (cur && textWidth(test, scale) > maxWidth) {
+          lines.push(cur);
+          cur = w;
+        } else {
+          cur = test;
+        }
+      }
+      if (cur) lines.push(cur);
+      return lines;
+    }
+
+    // Equivalentes directos de font_draw_text* en src/font.c: x,y es la
+    // esquina superior izquierda del texto (no la línea base, a diferencia
+    // de ctx.fillText), para que las posiciones calcen igual que en nativo.
+    function drawText(text, x, y, scale, color) {
+      ctx.fillStyle = color;
+      let curX = x, curY = y;
+      const charW = 8 * scale;
+      const lineH = 11 * scale;
+      for (const ch of text) {
+        if (ch === '\n') { curX = x; curY += lineH; continue; }
+        if (ch !== ' ') drawGlyph(glyphIndex(ch), curX, curY, scale);
+        curX += charW;
+      }
+    }
+
+    function drawTextShadow(text, x, y, scale, color, shadowColor) {
+      const offset = scale <= 2 ? 1 : Math.floor(scale / 2);
+      drawText(text, x + offset, y + offset, scale, shadowColor);
+      drawText(text, x, y, scale, color);
+    }
+
+    function drawTextCentered(text, cx, y, scale, color) {
+      drawText(text, cx - textWidth(text, scale) / 2, y, scale, color);
+    }
+
+    function drawTextCenteredShadow(text, cx, y, scale, color, shadowColor) {
+      drawTextShadow(text, cx - textWidth(text, scale) / 2, y, scale, color, shadowColor);
+    }
+
+    function drawTextRight(text, rx, y, scale, color) {
+      drawText(text, rx - textWidth(text, scale), y, scale, color);
+    }
+
+    function drawTextRightShadow(text, rx, y, scale, color, shadowColor) {
+      drawTextShadow(text, rx - textWidth(text, scale), y, scale, color, shadowColor);
+    }
+
+    // ============================================================
+    // Paneles y bloques: mismo estilo exacto que draw_panel()/draw_block()
+    // en src/render.c (marcas de esquina en L finas, no un cuadrado
+    // cerrado; bisel de luz arriba-izda + sombra abajo-dcha + núcleo LED
+    // brillante en el centro de cada bloque).
+    // ============================================================
     function drawPanel(x, y, w, h, bg = '#0e1826', border = '#224169') {
+      if (w <= 0 || h <= 0) return;
       ctx.fillStyle = bg;
       ctx.fillRect(x, y, w, h);
       ctx.strokeStyle = border;
-      ctx.lineWidth = 2;
-      ctx.strokeRect(x, y, w, h);
-      ctx.strokeStyle = '#00ebff';
-      ctx.strokeRect(x, y, 8, 8);
-      ctx.strokeRect(x + w - 8, y, 8, 8);
-      ctx.strokeRect(x, y + h - 8, 8, 8);
-      ctx.strokeRect(x + w - 8, y + h - 8, 8, 8);
+      ctx.lineWidth = 1;
+      ctx.strokeRect(x + 0.5, y + 0.5, w - 1, h - 1);
+
+      // Marcas de esquina en L (dos segmentos cortos, no un cuadrado cerrado)
+      ctx.strokeStyle = 'rgba(0,235,255,0.82)';
+      ctx.lineWidth = 1;
+      const c = 8;
+      ctx.beginPath();
+      ctx.moveTo(x, y + c); ctx.lineTo(x, y); ctx.lineTo(x + c, y);
+      ctx.moveTo(x + w - c, y); ctx.lineTo(x + w, y); ctx.lineTo(x + w, y + c);
+      ctx.moveTo(x, y + h - c); ctx.lineTo(x, y + h); ctx.lineTo(x + c, y + h);
+      ctx.moveTo(x + w - c, y + h); ctx.lineTo(x + w, y + h); ctx.lineTo(x + w, y + h - c);
+      ctx.stroke();
+    }
+
+    function shadeColor(hex, amount) {
+      const num = parseInt(hex.slice(1), 16);
+      const r = Math.min(255, Math.max(0, (num >> 16) + amount));
+      const g = Math.min(255, Math.max(0, ((num >> 8) & 0xff) + amount));
+      const b = Math.min(255, Math.max(0, (num & 0xff) + amount));
+      return `rgb(${r},${g},${b})`;
     }
 
     function drawBlock(x, y, size, color, isGhost = false) {
       if (!color) return;
       if (isGhost) {
         ctx.fillStyle = color + '28';
-        ctx.fillRect(x + 1, y + 1, size - 2, size - 2);
+        ctx.fillRect(x + 2, y + 2, size - 4, size - 4);
         ctx.strokeStyle = color + 'aa';
-        ctx.lineWidth = 2;
-        ctx.strokeRect(x + 1, y + 1, size - 2, size - 2);
+        ctx.lineWidth = 1;
+        ctx.strokeRect(x + 1.5, y + 1.5, size - 3, size - 3);
         return;
       }
+      // Bloque base
       ctx.fillStyle = color;
       ctx.fillRect(x + 1, y + 1, size - 2, size - 2);
-      ctx.fillStyle = 'rgba(255,255,255,0.5)';
-      ctx.fillRect(x + 2, y + 2, size - 4, 4);
-      ctx.fillRect(x + 2, y + 2, 4, size - 4);
-      ctx.fillStyle = 'rgba(0,0,0,0.4)';
-      ctx.fillRect(x + size - 5, y + 2, 4, size - 4);
-      ctx.fillRect(x + 2, y + size - 5, size - 4, 4);
+
+      // Bisel de luz (arriba e izquierda)
+      ctx.strokeStyle = shadeColor(color, 75);
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(x + 1, y + 1); ctx.lineTo(x + size - 2, y + 1);
+      ctx.moveTo(x + 1, y + 1); ctx.lineTo(x + 1, y + size - 2);
+      ctx.stroke();
+
+      // Borde oscuro (abajo y derecha)
+      ctx.strokeStyle = shadeColor(color, -128);
+      ctx.beginPath();
+      ctx.moveTo(x + 1, y + size - 2); ctx.lineTo(x + size - 2, y + size - 2);
+      ctx.moveTo(x + size - 2, y + 1); ctx.lineTo(x + size - 2, y + size - 2);
+      ctx.stroke();
+
+      // Núcleo LED brillante
+      if (size >= 16) {
+        ctx.fillStyle = 'rgba(255,255,255,0.55)';
+        const pad = Math.floor(size / 3);
+        ctx.fillRect(x + pad, y + pad, size - pad * 2, size - pad * 2);
+      }
     }
 
     function drawPreview(p, cx, cy, sz = 28) {
@@ -671,6 +1271,25 @@
           }
         }
       }
+    }
+
+    function drawHospitalCrest(cx, cy, size) {
+      if (size < 16) size = 16;
+      ctx.fillStyle = '#122032';
+      ctx.fillRect(cx - size / 2, cy - size / 2, size, size);
+      ctx.strokeStyle = '#00ebff';
+      ctx.lineWidth = 1;
+      ctx.strokeRect(cx - size / 2 + 0.5, cy - size / 2 + 0.5, size - 1, size - 1);
+
+      const armW = size / 4;
+      const armL = (size * 7) / 10;
+      ctx.fillStyle = '#ff2d37';
+      ctx.fillRect(cx - armL / 2, cy - armW / 2, armL, armW);
+      ctx.fillRect(cx - armW / 2, cy - armL / 2, armW, armL);
+
+      ctx.fillStyle = '#00f0ff';
+      const dotS = Math.max(2, size / 6);
+      ctx.fillRect(cx - dotS / 2, cy - dotS / 2, dotS, dotS);
     }
 
     // 1920x1080 Layout Constants
@@ -691,10 +1310,37 @@
     const RIGHT_H = 840;
 
     let lastTime = 0;
+    // El canvas dibuja siempre en coordenadas lógicas de 1920x1080, pero se
+    // muestra escalado por CSS a cualquier tamaño de ventana. Sin esto, el
+    // lienzo real seguía teniendo 1920x1080 píxeles de verdad mientras el
+    // navegador lo reescalaba (normalmente hacia abajo) para encajarlo en la
+    // pantalla, y encima sin tener en cuenta devicePixelRatio en monitores
+    // Retina/HiDPI — el resultado son trazos finos y detalles pequeños (como
+    // las esquinas de 8px de los paneles) borrosos o con aspecto doblado.
+    // Aquí se ajusta la resolución real del lienzo al tamaño con el que se
+    // muestra de verdad en pantalla, y se escala el contexto para que todo
+    // el código de dibujo (pensado en coordenadas de 1920x1080) siga
+    // funcionando igual, pero renderizado con nitidez nativa.
+    let lastCanvasCssW = 0, lastCanvasCssH = 0;
+    function resizeCanvasForDisplay() {
+      const dpr = window.devicePixelRatio || 1;
+      const cssW = canvas.clientWidth;
+      const cssH = canvas.clientHeight;
+      if (!cssW || !cssH) return;
+      if (cssW === lastCanvasCssW && cssH === lastCanvasCssH) return;
+      lastCanvasCssW = cssW;
+      lastCanvasCssH = cssH;
+      canvas.width = Math.round(cssW * dpr);
+      canvas.height = Math.round(cssH * dpr);
+      const scale = (cssW / WIN_W) * dpr;
+      ctx.setTransform(scale, 0, 0, scale, 0, 0);
+    }
+
     function loop(time) {
+      resizeCanvasForDisplay();
       const dt = (time - lastTime) / 1000;
       lastTime = time;
-      ecgPhase += dt * 5;
+      ecgPhase += dt * 2.5; // mitad de velocidad que antes
 
       if (gameState === 'PLAY') {
         const fallInterval = Math.max(90, 850 * Math.pow(0.85, level - 1));
@@ -725,85 +1371,79 @@
 
       // Top Header
       drawPanel(20, 14, 1880, 84);
-      // Hospital Crest
-      ctx.fillStyle = '#ff2d37';
-      ctx.fillRect(45, 38, 44, 16);
-      ctx.fillRect(59, 24, 16, 44);
-      ctx.strokeStyle = '#00ebff';
-      ctx.lineWidth = 2;
-      ctx.strokeRect(36, 16, 62, 60);
+      drawHospitalCrest(64, 56, 56);
 
-      // Large Header
-      ctx.textAlign = 'left';
-      ctx.fillStyle = '#ffffff';
-      ctx.font = 'bold 28px "Segoe UI", sans-serif';
-      ctx.fillText("HOSPITAL UNIVERSITARIO DE SANT JOAN D'ALACANT", 120, 48);
-      ctx.fillStyle = '#00ebff';
-      ctx.font = 'bold 18px "Segoe UI", sans-serif';
-      ctx.fillText("UNIDAD DE INFORMÁTICA Y TIC  |  GUARDIA DE 24 HORAS - CENTRO DE PROCESO DE DATOS", 120, 78);
+      drawTextShadow("HOSPITAL UNIVERSITARIO DE SANT JOAN D'ALACANT", 110, 28, 3, '#f5faff', '#060c14');
+      drawText("UNIDAD DE INFORMÁTICA Y TIC  |  GUARDIA DE 24 HORAS - CENTRO DE PROCESO DE DATOS", 110, 62, 2, '#00ebff');
 
-      // ECG Heartbeat Strip
-      drawPanel(1500, 20, 380, 72, '#040810');
-      ctx.strokeStyle = '#19e65a';
-      ctx.lineWidth = 2;
-      ctx.beginPath();
-      for (let px = 0; px < 380; px += 2) {
-        const ph = (ecgPhase + px * 0.04) % 6.28;
-        let yv = 0;
-        if (ph > 2.0 && ph < 2.4) yv = Math.sin((ph - 2.0) / 0.4 * Math.PI) * -22;
-        const py = 20 + 36 + yv;
-        if (px === 0) ctx.moveTo(1500 + px, py);
-        else ctx.lineTo(1500 + px, py);
+      // Tira de telemetría ECG (misma posición/tamaño y misma fórmula de onda que draw_ecg_monitor() en C)
+      {
+        const ex = 1430, ey = 24, ew = 440, eh = 64;
+        drawPanel(ex, ey, ew, eh, '#04080e');
+        ctx.strokeStyle = 'rgba(12,24,38,0.7)';
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        for (let gx = ex; gx < ex + ew; gx += 20) { ctx.moveTo(gx, ey); ctx.lineTo(gx, ey + eh); }
+        for (let gy = ey; gy < ey + eh; gy += 14) { ctx.moveTo(ex, gy); ctx.lineTo(ex + ew, gy); }
+        ctx.stroke();
+
+        const midY = ey + eh / 2;
+        ctx.strokeStyle = '#19eb5f';
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        for (let px = 0; px < ew; px += 2) {
+          const sp = (ecgPhase * 12 + px * 0.045) % 6.283185;
+          let wave = 0;
+          if (sp > 1.2 && sp < 1.6) wave = 0.20 * Math.sin((sp - 1.2) / 0.4 * Math.PI);
+          else if (sp >= 2.0 && sp < 2.15) wave = -0.22 * Math.sin((sp - 2.0) / 0.15 * Math.PI);
+          else if (sp >= 2.15 && sp < 2.35) wave = 1.0 * Math.sin((sp - 2.15) / 0.20 * Math.PI);
+          else if (sp >= 2.35 && sp < 2.50) wave = -0.35 * Math.sin((sp - 2.35) / 0.15 * Math.PI);
+          else if (sp >= 2.8 && sp < 3.4) wave = 0.30 * Math.sin((sp - 2.8) / 0.6 * Math.PI);
+          const cy = midY - wave * (eh / 2 - 6);
+          if (px === 0) ctx.moveTo(ex + px, cy); else ctx.lineTo(ex + px, cy);
+        }
+        ctx.stroke();
+
+        // El pico agudo del latido (QRS) puede llegar tan arriba como el
+        // propio texto y cruzarlo por detrás; se pone una placa de fondo
+        // detrás del texto para que siga siendo legible en todo momento,
+        // y se usa el mismo texto corto que la versión nativa (el más
+        // largo se salía del panel de 440px de ancho).
+        const ecgLabel = "ECG: 75 BPM | FIBRA: 10G";
+        const ecgLabelW = textWidth(ecgLabel, 2);
+        ctx.fillStyle = '#04080e';
+        ctx.fillRect(ex + 8, ey + 2, ecgLabelW + 8, 22);
+        drawText(ecgLabel, ex + 12, ey + 6, 2, '#19eb5f');
       }
-      ctx.stroke();
-      ctx.fillStyle = '#19e65a';
-      ctx.font = 'bold 16px monospace';
-      ctx.fillText("ECG: 75 BPM | UPTIME CPD: 99.98%", 1520, 42);
 
       // Left Panel
       drawPanel(LEFT_X, LEFT_Y, LEFT_W, LEFT_H);
-      drawPanel(LEFT_X + 16, LEFT_Y + 14, LEFT_W - 32, 106, '#040810');
-      ctx.textAlign = 'center';
-      ctx.fillStyle = '#00ebff';
-      ctx.font = 'bold 32px "Segoe UI", sans-serif';
-      ctx.fillText("SANT JOAN TETRIS", LEFT_X + LEFT_W / 2, LEFT_Y + 46);
-      ctx.fillStyle = '#19eb5f';
-      ctx.font = 'bold 18px "Segoe UI", sans-serif';
-      ctx.fillText(`GUARDIA DE HOY: ${getCurrentGuardia().toUpperCase()}`, LEFT_X + LEFT_W / 2, LEFT_Y + 74);
-      ctx.fillStyle = '#87afdf';
-      ctx.font = '15px "Segoe UI", sans-serif';
-      ctx.fillText("CPD Sótano 1 | Relevo cada 25 piezas", LEFT_X + LEFT_W / 2, LEFT_Y + 98);
+      drawPanel(LEFT_X + 16, LEFT_Y + 14, LEFT_W - 32, 106, '#04080e');
+      drawTextCenteredShadow("SANT JOAN TETRIS", LEFT_X + LEFT_W / 2, LEFT_Y + 24, 4, '#00ebff', '#060c14');
+      drawTextCentered(`GUARDIA DE HOY: ${getCurrentGuardia().toUpperCase()}`, LEFT_X + LEFT_W / 2, LEFT_Y + 62, 2, '#19eb5f');
+      drawTextCentered("CPD Sótano 1 | Relevo cada 25 piezas", LEFT_X + LEFT_W / 2, LEFT_Y + 86, 2, '#87afd2');
 
       // HOLD Box
       const holdY = LEFT_Y + 130;
-      drawPanel(LEFT_X + 16, holdY, LEFT_W - 32, 175, '#040810');
-      ctx.fillStyle = '#00ebff';
-      ctx.font = 'bold 20px "Segoe UI", sans-serif';
-      ctx.fillText("[ HOLD / CACHÉ ] (Tecla C o Shift)", LEFT_X + LEFT_W / 2, holdY + 36);
+      drawPanel(LEFT_X + 16, holdY, LEFT_W - 32, 175, '#04080e');
+      drawTextCentered("[ HOLD / CACHÉ ] (Tecla C o Shift)", LEFT_X + LEFT_W / 2, holdY + 12, 2, '#00ebff');
       if (holdPiece) {
-        drawPreview(holdPiece, LEFT_X + LEFT_W / 2, holdY + 95, 30);
+        drawPreview(holdPiece, LEFT_X + LEFT_W / 2, holdY + 88, 30);
       } else {
-        ctx.fillStyle = '#3c5a78';
-        ctx.font = 'bold 22px "Segoe UI", sans-serif';
-        ctx.fillText("- VACÍO -", LEFT_X + LEFT_W / 2, holdY + 95);
+        drawTextCentered("- VACÍO -", LEFT_X + LEFT_W / 2, holdY + 80, 3, '#3c5a78');
       }
-      ctx.fillStyle = '#87afdf';
-      ctx.font = '15px "Segoe UI", sans-serif';
-      ctx.fillText("Guarda un bloque de emergencia...", LEFT_X + LEFT_W / 2, holdY + 155);
+      drawTextCentered("Guarda un bloque de emergencia...", LEFT_X + LEFT_W / 2, holdY + 146, 2, '#87afd2');
 
       // Incidencias de la Guardia (Rotativas según el turno activo)
       const sysY = holdY + 188;
-      drawPanel(LEFT_X + 16, sysY, LEFT_W - 32, 255, '#040810');
-      ctx.textAlign = 'left';
-      ctx.fillStyle = '#ffb400';
-      ctx.font = 'bold 18px "Segoe UI", sans-serif';
-      ctx.fillText("INCIDENCIAS DE LA GUARDIA:", LEFT_X + 32, sysY + 32);
+      drawPanel(LEFT_X + 16, sysY, LEFT_W - 32, 255, '#04080e');
+      drawText("INCIDENCIAS DE LA GUARDIA:", LEFT_X + 32, sysY + 14, 2, '#ffbe00');
 
-      const curShift = Math.floor(piecesDropped / 25) % 4;
+      const curShift = getCurrentGuardiaIndex();
       const statusSets = [
         // Turno 0 (Jose María)
         [
-          ["Urgencias: Atasco papel", "[DE SIEMPRE]", "#ffb400"],
+          ["Urgencias: Atasco papel", "[DE SIEMPRE]", "#ffbe00"],
           ["Planta 3: Ratón suelto", "[DESENCHUFADO]", "#19eb5f"],
           ["UCI: Cable red quitado", "[CARGAR MÓVIL]", "#ff2d37"],
           ["Consultas: 'Borré todo'", "[MINIMIZADO]", "#00ebff"],
@@ -811,7 +1451,7 @@
         ],
         // Turno 1 (Marichu)
         [
-          ["Quirófano: Pantalla girada", "[90 GRADOS]", "#ffb400"],
+          ["Quirófano: Pantalla girada", "[90 GRADOS]", "#ffbe00"],
           ["Farmacia: Teclado con café", "[PEGAJOSO]", "#19eb5f"],
           ["Admisión: Pulsera rota", "[DOBLE TICKET]", "#ff2d37"],
           ["Planta 4: 'No hay internet'", "[SIN WIFI]", "#00ebff"],
@@ -819,7 +1459,7 @@
         ],
         // Turno 2 (Diego)
         [
-          ["Radiología: TAC sin red", "[ENCHUFE FLOJO]", "#ffb400"],
+          ["Radiología: TAC sin red", "[ENCHUFE FLOJO]", "#ffbe00"],
           ["Triaje: Impresora huelga", "[FALTA PAPEL]", "#19eb5f"],
           ["Archivos: Archivo borrado", "[EN PAPELERA]", "#ff2d37"],
           ["Planta 2: Regleta apagada", "[DADA CON PIE]", "#00ebff"],
@@ -827,7 +1467,7 @@
         ],
         // Turno 3 (Ernesto)
         [
-          ["Dirección: 'Se cayó red'", "[CABLE SUELTO]", "#ffb400"],
+          ["Dirección: 'Se cayó red'", "[CABLE SUELTO]", "#ffbe00"],
           ["Laboratorio: Centrífuga", "[NO ES IMPRESORA]", "#19eb5f"],
           ["UCI: Clave olvidada", "[EN POST-IT]", "#ff2d37"],
           ["Consultas: Ratón sin pila", "[CAMBIADA 04AM]", "#00ebff"],
@@ -835,43 +1475,33 @@
         ]
       ];
       statusSets[curShift].forEach(([title, tag, col], i) => {
-        ctx.fillStyle = '#ffffff';
-        ctx.font = '16px "Segoe UI", sans-serif';
-        ctx.fillText(title, LEFT_X + 32, sysY + 70 + i * 38);
-        ctx.textAlign = 'right';
-        ctx.fillStyle = col;
-        ctx.font = 'bold 16px "Segoe UI", sans-serif';
-        ctx.fillText(tag, LEFT_X + LEFT_W - 32, sysY + 70 + i * 38);
-        ctx.textAlign = 'left';
+        const ry = sysY + 44 + i * 38;
+        drawText(title, LEFT_X + 32, ry, 2, '#f5faff');
+        drawTextRight(tag, LEFT_X + LEFT_W - 32, ry, 2, col);
       });
 
       // Music info
       const musicY = sysY + 268;
-      drawPanel(LEFT_X + 16, musicY, LEFT_W - 32, 238, '#040810');
-      ctx.fillStyle = '#00ebff';
-      ctx.font = 'bold 18px "Segoe UI", sans-serif';
-      ctx.fillText("HILO MUSICAL DEL CPD (SANT JOAN):", LEFT_X + 32, musicY + 32);
+      drawPanel(LEFT_X + 16, musicY, LEFT_W - 32, 238, '#04080e');
+      drawText("HILO MUSICAL DEL CPD (SANT JOAN):", LEFT_X + 32, musicY + 14, 2, '#00ebff');
 
-      // Visualizer Bars
+      // Ecualizador: energía real del motor de audio (bombo, bajo, caja,
+      // pad, lead, hi-hat, ecg, total), igual que audio_get_visualizer() en C.
       for (let i = 0; i < 8; i++) {
-        const barH = 15 + Math.random() * 45;
-        ctx.fillStyle = i < 2 ? '#ff2d37' : (i < 5 ? '#ffb400' : '#19eb5f');
+        const barH = 8 + visLevels[i] * 95;
+        ctx.fillStyle = i < 2 ? '#ff2d37' : (i < 5 ? '#ffbe00' : '#19eb5f');
         ctx.fillRect(LEFT_X + 32 + i * 78, musicY + 110 - barH, 70, barH);
       }
 
-      ctx.fillStyle = '#ffffff';
-      ctx.font = 'bold 17px "Segoe UI", sans-serif';
-      ctx.fillText(TRACK_NAMES[trackIndex], LEFT_X + 32, musicY + 155);
-      ctx.fillStyle = '#ffb400';
-      ctx.font = '16px "Segoe UI", sans-serif';
-      ctx.fillText("[T] Pista   [M] Silenciar   [+/-] Volumen", LEFT_X + 32, musicY + 185);
-      ctx.fillStyle = '#87afdf';
-      ctx.font = '15px "Segoe UI", sans-serif';
-      ctx.fillText("Síntesis para no dormirse en guardia", LEFT_X + 32, musicY + 215);
+      drawText(TRACK_NAMES[trackIndex], LEFT_X + 32, musicY + 120, 2, '#f5faff');
+      drawText("[T] Pista   [M] Silenciar   [+/-] Volumen", LEFT_X + 32, musicY + 152, 2, '#ffbe00');
+      drawText("Síntesis para no dormirse en guardia", LEFT_X + 32, musicY + 182, 2, '#87afd2');
 
       // Playfield (Center Board)
-      drawPanel(BOARD_X - 8, BOARD_Y - 8, BOARD_PIX_W + 16, BOARD_PIX_H + 16, '#080f18');
-      ctx.strokeStyle = '#122030';
+      drawPanel(BOARD_X - 8, BOARD_Y - 8, BOARD_PIX_W + 16, BOARD_PIX_H + 16, '#060c14');
+      ctx.fillStyle = '#080e16';
+      ctx.fillRect(BOARD_X, BOARD_Y, BOARD_PIX_W, BOARD_PIX_H);
+      ctx.strokeStyle = 'rgba(18,30,46,0.7)';
       ctx.lineWidth = 1;
       for (let c = 1; c < BOARD_W; c++) {
         ctx.beginPath(); ctx.moveTo(BOARD_X + c * BLOCK_S, BOARD_Y); ctx.lineTo(BOARD_X + c * BLOCK_S, BOARD_Y + BOARD_PIX_H); ctx.stroke();
@@ -911,114 +1541,83 @@
 
       // Right Panel
       drawPanel(RIGHT_X, RIGHT_Y, RIGHT_W, RIGHT_H);
-      drawPanel(RIGHT_X + 16, RIGHT_Y + 14, RIGHT_W - 32, 175, '#040810');
-      ctx.textAlign = 'center';
-      ctx.fillStyle = '#00ebff';
-      ctx.font = 'bold 20px "Segoe UI", sans-serif';
-      ctx.fillText("[ PRÓXIMAS INCIDENCIAS ENTRANTES ]", RIGHT_X + RIGHT_W / 2, RIGHT_Y + 36);
+      drawPanel(RIGHT_X + 16, RIGHT_Y + 14, RIGHT_W - 32, 175, '#04080e');
+      drawTextCentered("[ PRÓXIMAS INCIDENCIAS ENTRANTES ]", RIGHT_X + RIGHT_W / 2, RIGHT_Y + 14, 2, '#00ebff');
       nextQueue.slice(0, 3).forEach((np, idx) => {
         drawPreview(np, RIGHT_X + 80 + idx * 210, RIGHT_Y + 95, 28);
       });
-      ctx.fillStyle = '#87afdf';
-      ctx.font = '15px "Segoe UI", sans-serif';
-      ctx.fillText("3 marrones más entrando por Urgencias", RIGHT_X + RIGHT_W / 2, RIGHT_Y + 155);
+      drawTextCentered("3 marrones más entrando por Urgencias", RIGHT_X + RIGHT_W / 2, RIGHT_Y + 148, 2, '#87afd2');
 
       // Stats Box
       const statsY = RIGHT_Y + 200;
-      drawPanel(RIGHT_X + 16, statsY, RIGHT_W - 32, 280, '#040810');
-      ctx.textAlign = 'left';
-      ctx.fillStyle = '#00ebff';
-      ctx.font = 'bold 18px "Segoe UI", sans-serif';
-      ctx.fillText("INCIDENCIAS RESUELTAS (PUNTOS):", RIGHT_X + 32, statsY + 30);
+      drawPanel(RIGHT_X + 16, statsY, RIGHT_W - 32, 280, '#04080e');
+      drawText("INCIDENCIAS RESUELTAS (PUNTOS):", RIGHT_X + 32, statsY + 14, 2, '#00ebff');
 
       // Giant Score!
-      ctx.fillStyle = '#ffffff';
-      ctx.font = 'bold 48px monospace';
-      ctx.fillText(score.toString().padStart(7, '0'), RIGHT_X + 32, statsY + 80);
+      drawTextShadow(score.toString().padStart(7, '0'), RIGHT_X + 32, statsY + 40, 6, '#f5faff', '#060c14');
 
-      ctx.fillStyle = '#ffb400';
-      ctx.font = 'bold 20px "Segoe UI", sans-serif';
-      ctx.fillText(`Récord de la Guardia: ${highscore.toString().padStart(7, '0')}`, RIGHT_X + 32, statsY + 120);
-
-      ctx.fillStyle = '#ffffff';
-      ctx.font = '20px "Segoe UI", sans-serif';
-      ctx.fillText(`Marrones esquivados (Líneas): ${lines}`, RIGHT_X + 32, statsY + 155);
-
-      ctx.fillStyle = '#19eb5f';
-      ctx.font = 'bold 20px "Segoe UI", sans-serif';
-      ctx.fillText(`Nivel ${level} - Servicio: ${DEPARTMENTS[Math.min(level - 1, DEPARTMENTS.length - 1)]}`, RIGHT_X + 32, statsY + 190);
+      drawText(`Récord de la Guardia: ${highscore.toString().padStart(7, '0')}`, RIGHT_X + 32, statsY + 102, 2, '#ffbe00');
+      drawText(`Marrones esquivados (Líneas): ${lines}`, RIGHT_X + 32, statsY + 130, 2, '#f5faff');
+      drawText(`Nivel ${level} - Servicio:`, RIGHT_X + 32, statsY + 158, 2, '#19eb5f');
+      drawTextShadow(DEPARTMENTS[Math.min(level - 1, DEPARTMENTS.length - 1)], RIGHT_X + 32, statsY + 184, 3, '#f5faff', '#060c14');
 
       const elapsedSec = Math.floor((Date.now() - shiftStart) / 1000);
       const em = Math.floor(elapsedSec / 60);
       const es = elapsedSec % 60;
-      ctx.fillStyle = '#00ebff';
-      ctx.font = '18px "Segoe UI", sans-serif';
-      ctx.fillText(`Guardia: ${getCurrentGuardia()}  (${em.toString().padStart(2,'0')}:${es.toString().padStart(2,'0')} min)`, RIGHT_X + 32, statsY + 225);
+      drawText(`Guardia: ${getCurrentGuardia()}  (${em.toString().padStart(2,'0')}:${es.toString().padStart(2,'0')} min)`, RIGHT_X + 32, statsY + 222, 2, '#00ebff');
 
-      ctx.fillStyle = '#87afdf';
-      ctx.font = '16px "Segoe UI", sans-serif';
       const piecesInShift = piecesDropped % 25;
-      ctx.fillText(`Turno activo: ${piecesInShift}/25 piezas para relevo`, RIGHT_X + 32, statsY + 255);
+      drawText(`Turno activo: ${piecesInShift}/25 piezas para relevo`, RIGHT_X + 32, statsY + 248, 2, '#87afd2');
 
       // Terminal Ticker
       const tickY = statsY + 295;
-      drawPanel(RIGHT_X + 16, tickY, RIGHT_W - 32, 335, '#040810');
-      ctx.fillStyle = '#19eb5f';
-      ctx.font = 'bold 19px monospace';
-      ctx.fillText(">_ LOG DE INCIDENCIAS (SANT JOAN 24H):", RIGHT_X + 32, tickY + 32);
+      const tickBottom = tickY + 335;
+      drawPanel(RIGHT_X + 16, tickY, RIGHT_W - 32, 335, '#04080e');
+      drawText(">_ LOG DE INCIDENCIAS (SANT JOAN 24H):", RIGHT_X + 32, tickY + 14, 2, '#19eb5f');
 
+      // Las incidencias pueden ser largas: se ajustan a varias líneas dentro
+      // del ancho del panel en vez de salirse de la ventana.
+      const tickerInnerW = RIGHT_W - 64;
+      const tickerLineH = 22;
+      let tickerY = tickY + 46;
       const visibleTickers = ticker.slice(-5);
-      visibleTickers.forEach((t, i) => {
-        const ey = tickY + 68 + i * 52;
+      for (const t of visibleTickers) {
+        if (tickerY > tickBottom - tickerLineH) break;
         const splitIdx = t.indexOf(': ');
         if (splitIdx !== -1) {
-          const tag = t.substring(0, splitIdx + 1);
-          const desc = '> ' + t.substring(splitIdx + 2);
-          ctx.fillStyle = '#00ebff';
-          ctx.font = 'bold 15px monospace';
-          ctx.fillText(tag, RIGHT_X + 32, ey);
-          ctx.fillStyle = '#87afdf';
-          ctx.font = '14px monospace';
-          ctx.fillText(desc, RIGHT_X + 32, ey + 22);
+          const tagLines = wrapText(t.substring(0, splitIdx + 1), 2, tickerInnerW);
+          const descLines = wrapText('> ' + t.substring(splitIdx + 2), 2, tickerInnerW);
+          for (const line of tagLines) { drawText(line, RIGHT_X + 32, tickerY, 2, '#00ebff'); tickerY += tickerLineH; }
+          for (const line of descLines) { drawText(line, RIGHT_X + 32, tickerY, 2, '#87afd2'); tickerY += tickerLineH; }
         } else {
-          ctx.fillStyle = '#87afdf';
-          ctx.font = '15px monospace';
-          ctx.fillText(t, RIGHT_X + 32, ey + 12);
+          const lines = wrapText(t, 2, tickerInnerW);
+          for (const line of lines) { drawText(line, RIGHT_X + 32, tickerY, 2, '#87afd2'); tickerY += tickerLineH; }
         }
-      });
+        tickerY += 10; // separación entre incidencias
+      }
 
       // Bottom Footer Bar
       drawPanel(20, 972, 1880, 94);
 
       // Divider line
-      ctx.strokeStyle = '#224169';
+      ctx.strokeStyle = 'rgba(34,65,105,0.7)';
       ctx.lineWidth = 1;
       ctx.beginPath();
       ctx.moveTo(1180, 984);
       ctx.lineTo(1180, 1054);
       ctx.stroke();
 
-      ctx.fillStyle = '#ffffff';
-      ctx.font = 'bold 18px "Segoe UI", sans-serif';
-      ctx.fillText("[ESPACIO] Caída rápida   [C/Shift] Hold   [P] Pausa   [R] Reiniciar", 48, 1008);
-      ctx.fillStyle = '#87afdf';
-      ctx.font = '16px "Segoe UI", sans-serif';
-      ctx.fillText("[Flechas / WASD] Movimiento y Giro   [T] Música   [M] Mute   [F1] Manual", 48, 1042);
+      drawText("[ESPACIO] Caída rápida   [C/Shift] Hold   [P] Pausa   [R] Reiniciar", 48, 990, 2, '#f5faff');
+      drawText("[Flechas / WASD] Movimiento y Giro   [T] Música   [M] Mute   [F1] Manual", 48, 1026, 2, '#87afd2');
 
-      ctx.textAlign = 'right';
-      ctx.fillStyle = '#00ebff';
-      ctx.font = 'bold 18px "Segoe UI", sans-serif';
-      ctx.fillText("Hospital Univ. Sant Joan d'Alacant", 1872, 1008);
-      ctx.fillStyle = '#ffb400';
-      ctx.font = '16px "Segoe UI", sans-serif';
-      ctx.fillText("\"¿Ha probado a apagarlo y encenderlo?\"", 1872, 1042);
+      drawTextRight("Hospital Univ. Sant Joan d'Alacant", 1872, 990, 2, '#00ebff');
+      drawTextRight("\"¿Ha probado a apagarlo y encenderlo?\"", 1872, 1026, 2, '#ffbe00');
 
       // Toasts
       if (toastAlpha > 0) {
-        ctx.textAlign = 'center';
-        ctx.fillStyle = `rgba(0, 235, 255, ${toastAlpha})`;
-        ctx.font = 'bold 36px "Segoe UI", sans-serif';
-        ctx.fillText(toastText, BOARD_X + BOARD_PIX_W / 2, BOARD_Y + BOARD_PIX_H / 2);
+        const toastColor = `rgba(0,235,255,${toastAlpha})`;
+        const toastShadow = `rgba(0,0,0,${toastAlpha * 0.9})`;
+        drawTextCenteredShadow(toastText, BOARD_X + BOARD_PIX_W / 2, BOARD_Y + BOARD_PIX_H / 2 - 25, 4, toastColor, toastShadow);
         toastAlpha -= dt * 0.8;
       }
 
@@ -1027,106 +1626,70 @@
         ctx.fillStyle = 'rgba(6, 12, 20, 0.96)';
         ctx.fillRect(0, 0, WIN_W, WIN_H);
 
-        ctx.textAlign = 'center';
-        ctx.fillStyle = '#ff2d37';
-        ctx.fillRect(WIN_W / 2 - 30, 85, 60, 20);
-        ctx.fillRect(WIN_W / 2 - 10, 65, 20, 60);
-        ctx.strokeStyle = '#00ebff';
-        ctx.lineWidth = 3;
-        ctx.strokeRect(WIN_W / 2 - 45, 50, 90, 90);
+        drawHospitalCrest(WIN_W / 2, 110, 84);
+        drawTextCenteredShadow("S A N T   J O A N   T E T R I S", WIN_W / 2, 175, 6, '#00ebff', '#060c14');
+        drawTextCenteredShadow("HOSPITAL UNIVERSITARIO DE SANT JOAN D'ALACANT", WIN_W / 2, 245, 3, '#f5faff', '#060c14');
+        drawTextCentered("UNIDAD DE INFORMÁTICA Y TECNOLOGÍAS DE LA INFORMACIÓN (TIC)", WIN_W / 2, 282, 2, '#19eb5f');
+        drawTextCentered("EQUIPO DE GUARDIA: Jose María - Marichu - Diego - Ernesto (Turnos rotatorios)", WIN_W / 2, 305, 2, '#00ebff');
+        drawTextCentered("Simulador de Guardia Nocturna: Relevo cada 25 piezas colocadas", WIN_W / 2, 330, 2, '#ffbe00');
 
-        ctx.fillStyle = '#00ebff';
-        ctx.font = 'bold 56px "Segoe UI", sans-serif';
-        ctx.fillText("SANT JOAN TETRIS", WIN_W / 2, 195);
+        // Menu Buttons — el ancho del cuadro se calcula a partir del propio
+        // texto (con margen), para que nunca quede más corto que el texto
+        // que tiene que envolver, por largo que sea.
+        const menuOpt1 = "1. COMENZAR TURNO DE GUARDIA (ENTER / ESPACIO)";
+        const menuOpt2 = "2. MANUAL DE SUPERVIVENCIA EN EL HOSPITAL (PULSA 2 / H)";
+        const menuBoxW = Math.max(textWidth(menuOpt1, 3), textWidth(menuOpt2, 3)) + 80;
 
-        ctx.fillStyle = '#ffffff';
-        ctx.font = 'bold 26px "Segoe UI", sans-serif';
-        ctx.fillText("HOSPITAL UNIVERSITARIO DE SANT JOAN D'ALACANT", WIN_W / 2, 240);
+        // Igual que en la versión nativa: el recuadro (con sus esquinas en
+        // cian) solo se dibuja para la opción realmente seleccionada; la
+        // otra es solo texto, sin panel de ningún tipo.
+        if (menuSelected === 0) {
+          drawPanel(WIN_W / 2 - menuBoxW / 2, 382, menuBoxW, 62, '#0e1826', '#00ebff');
+          drawTextCenteredShadow(menuOpt1, WIN_W / 2, 402, 3, '#00ebff', '#060c14');
+        } else {
+          drawTextCentered(menuOpt1, WIN_W / 2, 402, 3, '#87afd2');
+        }
 
-        ctx.fillStyle = '#19eb5f';
-        ctx.font = '20px "Segoe UI", sans-serif';
-        ctx.fillText("UNIDAD DE INFORMÁTICA Y TECNOLOGÍAS DE LA INFORMACIÓN (TIC)", WIN_W / 2, 275);
-        ctx.fillStyle = '#00ebff';
-        ctx.font = 'bold 18px "Segoe UI", sans-serif';
-        ctx.fillText("EQUIPO DE GUARDIA: Jose María · Marichu · Diego · Ernesto (Turnos rotatorios)", WIN_W / 2, 305);
-        ctx.fillStyle = '#ffb400';
-        ctx.font = '18px "Segoe UI", sans-serif';
-        ctx.fillText("Simulador de Guardia Nocturna: Relevo cada 25 piezas colocadas", WIN_W / 2, 335);
+        if (menuSelected === 1) {
+          drawPanel(WIN_W / 2 - menuBoxW / 2, 456, menuBoxW, 62, '#0e1826', '#00ebff');
+          drawTextCenteredShadow(menuOpt2, WIN_W / 2, 476, 3, '#00ebff', '#060c14');
+        } else {
+          drawTextCentered(menuOpt2, WIN_W / 2, 476, 3, '#87afd2');
+        }
 
-        // Menu Buttons
-        drawPanel(WIN_W / 2 - 380, 390, 760, 68, '#0e1826', '#00ebff');
-        ctx.fillStyle = '#00ebff';
-        ctx.font = 'bold 26px "Segoe UI", sans-serif';
-        ctx.fillText("1. COMENZAR TURNO DE GUARDIA (ENTER / ESPACIO)", WIN_W / 2, 434);
+        drawTextCentered("Usa Flechas o W/S para seleccionar  |  ENTER o ESPACIO para confirmar", WIN_W / 2, 600, 2, '#f5faff');
+        drawTextCentered("[T] Música de guardia   [M] Silenciar música   [+/-] Regular volumen", WIN_W / 2, 636, 2, '#ffbe00');
 
-        drawPanel(WIN_W / 2 - 380, 475, 760, 68, '#0e1826', '#224169');
-        ctx.fillStyle = '#87afdf';
-        ctx.font = 'bold 26px "Segoe UI", sans-serif';
-        ctx.fillText("2. MANUAL DE SUPERVIVENCIA EN EL HOSPITAL (PULSA 2 / H)", WIN_W / 2, 519);
-
-        ctx.fillStyle = '#ffffff';
-        ctx.font = '18px "Segoe UI", sans-serif';
-        ctx.fillText("Usa Flechas o W/S para seleccionar  |  ENTER o ESPACIO para confirmar", WIN_W / 2, 615);
-        ctx.fillStyle = '#ffb400';
-        ctx.fillText("[T] Música de guardia   [M] Silenciar música   [+/-] Regular volumen", WIN_W / 2, 650);
-
-        // TINY REFERENCE TO MIGUEL ANGEL (pequeñito al principio)
-        ctx.fillStyle = '#3c5a78';
-        ctx.font = '12px "Segoe UI", sans-serif';
-        ctx.fillText("Concepto original y prompt: Miguel Ángel Esteban - aka MA (2026)", WIN_W / 2, 1045);
+        drawTextCentered("Concepto original y prompt: Miguel Ángel Esteban - aka MA (2026)", WIN_W / 2, 1040, 2, '#3c5a78');
       } else if (gameState === 'PAUSE') {
-        drawPanel(WIN_W / 2 - 400, WIN_H / 2 - 180, 800, 360, '#0e1826', '#00ebff');
-        ctx.textAlign = 'center';
-        ctx.fillStyle = '#00ebff';
-        ctx.font = 'bold 36px "Segoe UI", sans-serif';
-        ctx.fillText("GUARDIA EN PAUSA", WIN_W / 2, WIN_H / 2 - 90);
-        ctx.fillStyle = '#ffffff';
-        ctx.font = '22px "Segoe UI", sans-serif';
-        ctx.fillText(`${getCurrentGuardia()} ha bajado a por un café a Urgencias.`, WIN_W / 2, WIN_H / 2 - 30);
-        ctx.fillStyle = '#ffb400';
-        ctx.font = '19px "Segoe UI", sans-serif';
-        ctx.fillText("Reza para que ningún switch de planta eche humo mientras tanto...", WIN_W / 2, WIN_H / 2 + 15);
-        ctx.fillStyle = '#19eb5f';
-        ctx.font = 'bold 28px "Segoe UI", sans-serif';
-        ctx.fillText("Pulsa [P] o [ESC] para reanudar el turno", WIN_W / 2, WIN_H / 2 + 85);
+        const pw = 1050, ph = 380, px = (WIN_W - pw) / 2, py = (WIN_H - ph) / 2;
+        drawPanel(px, py, pw, ph, '#0e1826', '#00ebff');
+        drawTextCenteredShadow("GUARDIA EN PAUSA", WIN_W / 2, py + 35, 5, '#00ebff', '#060c14');
+        drawTextCentered(`${getCurrentGuardia()} ha bajado a por un café a Urgencias.`, WIN_W / 2, py + 115, 2, '#f5faff');
+        drawTextCentered("Reza para que ningún switch de planta eche humo mientras tanto...", WIN_W / 2, py + 155, 2, '#ffbe00');
+        drawTextCentered("Pulsa [P] o [ESC] para reanudar el turno", WIN_W / 2, py + 225, 3, '#19eb5f');
       } else if (gameState === 'GAMEOVER') {
-        drawPanel(WIN_W / 2 - 450, WIN_H / 2 - 240, 900, 480, '#0e1826', '#ff2d37');
-        ctx.textAlign = 'center';
-        ctx.fillStyle = '#ff2d37';
-        ctx.font = 'bold 44px "Segoe UI", sans-serif';
-        ctx.fillText("¡¡COLAPSO TOTAL DEL HOSPITAL!!", WIN_W / 2, WIN_H / 2 - 140);
-        ctx.fillStyle = '#ffffff';
-        ctx.font = '22px "Segoe UI", sans-serif';
-        ctx.fillText(`El turno de guardia de ${getCurrentGuardia()} colapsó ante tantos tickets.`, WIN_W / 2, WIN_H / 2 - 95);
-        ctx.fillStyle = '#ffb400';
-        ctx.font = '19px "Segoe UI", sans-serif';
-        ctx.fillText("Se ha caído la red. Los médicos están sacando papel y bolígrafo BIC.", WIN_W / 2, WIN_H / 2 - 65);
-        ctx.fillStyle = '#00ebff';
-        ctx.font = 'bold 36px monospace';
-        ctx.fillText(`Tickets Solucionados: ${score}`, WIN_W / 2, WIN_H / 2 - 10);
-        ctx.fillStyle = '#ffffff';
-        ctx.font = '22px "Segoe UI", sans-serif';
-        ctx.fillText(`Marrones esquivados: ${lines} líneas`, WIN_W / 2, WIN_H / 2 + 35);
-        ctx.fillStyle = '#ffb400';
-        ctx.font = '22px "Segoe UI", sans-serif';
-        ctx.fillText(`Servicio de la catástrofe: ${DEPARTMENTS[Math.min(level - 1, DEPARTMENTS.length - 1)]}`, WIN_W / 2, WIN_H / 2 + 75);
-        ctx.fillStyle = '#19eb5f';
-        ctx.font = 'bold 30px "Segoe UI", sans-serif';
-        ctx.fillText("Pulsa [R] o [ESPACIO] para fichar en otra guardia", WIN_W / 2, WIN_H / 2 + 145);
+        const pw = 1150, ph = 540, px = (WIN_W - pw) / 2, py = (WIN_H - ph) / 2;
+        drawPanel(px, py, pw, ph, '#0e1826', '#ff2d37');
+        drawTextCenteredShadow("¡¡COLAPSO TOTAL DEL HOSPITAL!!", WIN_W / 2, py + 35, 4, '#ff2d37', '#060c14');
+        drawTextCentered("Se ha caído la red. Los médicos sacan papel y bolígrafo BIC.", WIN_W / 2, py + 105, 2, '#f5faff');
+        drawTextCenteredShadow(`Tickets Resueltos: ${score}`, WIN_W / 2, py + 155, 4, '#00ebff', '#060c14');
+        drawTextCentered(`Marrones esquivados: ${lines} líneas`, WIN_W / 2, py + 210, 3, '#f5faff');
+        drawTextCentered(`Servicio de la catástrofe: ${DEPARTMENTS[Math.min(level - 1, DEPARTMENTS.length - 1)]}`, WIN_W / 2, py + 255, 3, '#ffbe00');
+        const mins = Math.floor(Math.floor((Date.now() - shiftStart) / 1000) / 60);
+        const secs = Math.floor((Date.now() - shiftStart) / 1000) % 60;
+        drawTextCentered(`Tiempo resistiendo en la trinchera: ${mins.toString().padStart(2,'0')}:${secs.toString().padStart(2,'0')} min`, WIN_W / 2, py + 300, 2, '#87afd2');
+        drawTextCenteredShadow("[R / ESPACIO] Fichar para una Nueva Guardia", WIN_W / 2, py + 380, 3, '#19eb5f', '#060c14');
       } else if (gameState === 'ABOUT') {
-        drawPanel(WIN_W / 2 - 700, 70, 1400, 940, '#0e1826', '#00ebff');
-        ctx.textAlign = 'center';
-        ctx.fillStyle = '#00ebff';
-        ctx.font = 'bold 38px "Segoe UI", sans-serif';
-        ctx.fillText("MANUAL DE SUPERVIVENCIA: EL INFORMÁTICO DE GUARDIA", WIN_W / 2, 130);
-        ctx.fillStyle = '#ffffff';
-        ctx.font = '22px "Segoe UI", sans-serif';
-        ctx.fillText("HOSPITAL UNIVERSITARIO DE SANT JOAN D'ALACANT - SÓTANO 1 CPD", WIN_W / 2, 170);
+        const pw = 1550, ph = 920, px = (WIN_W - pw) / 2, py = (WIN_H - ph) / 2;
+        drawPanel(px, py, pw, ph, '#0e1826', '#00ebff');
+        drawHospitalCrest(px + 70, py + 60, 60);
+        drawTextShadow("MANUAL DE SUPERVIVENCIA: EL INFORMÁTICO DE GUARDIA", px + 120, py + 35, 3, '#00ebff', '#060c14');
+        drawText("HOSPITAL UNIVERSITARIO DE SANT JOAN D'ALACANT - SÓTANO 1 CPD", px + 120, py + 72, 2, '#f5faff');
 
-        ctx.textAlign = 'left';
-        ctx.fillStyle = '#ffb400';
-        ctx.font = 'bold 24px "Segoe UI", sans-serif';
-        ctx.fillText("PROTOCOLO OFICIAL DE ACTUACIÓN ANTE INCIDENCIAS:", WIN_W / 2 - 640, 230);
+        const ty = py + 120;
+        drawPanel(px + 35, ty, pw - 70, 480, '#04080e');
+        drawText("PROTOCOLO OFICIAL DE ACTUACIÓN ANTE INCIDENCIAS:", px + 60, ty + 18, 3, '#ffbe00');
 
         const rules = [
           "1. Pregunta siempre: 'Doctor, ¿ha probado a apagarlo y volverlo a encender?' (Soluciona el 90% de los casos).",
@@ -1139,23 +1702,16 @@
           "8. Turno rotativo cada 25 piezas: Jose María, Marichu, Diego y Ernesto."
         ];
         rules.forEach((r, i) => {
-          ctx.fillStyle = '#ffffff';
-          ctx.font = '18px "Segoe UI", sans-serif';
-          ctx.fillText(r, WIN_W / 2 - 640, 275 + i * 44);
+          drawText(r, px + 60, ty + 64 + i * 50, 2, '#f5faff');
         });
 
-        ctx.fillStyle = '#00ebff';
-        ctx.font = 'bold 24px "Segoe UI", sans-serif';
-        ctx.fillText("CONTROLES DEL TURNO DE GUARDIA:", WIN_W / 2 - 640, 650);
-        ctx.fillStyle = '#ffffff';
-        ctx.font = '18px "Segoe UI", sans-serif';
-        ctx.fillText("Mover: Flechas / AD  |  Rotar: Arriba o W (CW), Z o Q (CCW)  |  Caída Instantánea: Espacio", WIN_W / 2 - 640, 688);
-        ctx.fillText("Caché (Hold): C o Shift  |  Música: T (Pista), M (Mute), +/- (Volumen)  |  Pausa: P o Esc", WIN_W / 2 - 640, 722);
+        const cY = ty + 505;
+        drawPanel(px + 35, cY, pw - 70, 180, '#04080e');
+        drawText("CONTROLES DEL TURNO DE GUARDIA:", px + 60, cY + 16, 3, '#00ebff');
+        drawText("Mover: Flechas / AD  |  Rotar: Arriba o W (CW), Z o Q (CCW)  |  Caída Instantánea: Espacio", px + 60, cY + 58, 2, '#f5faff');
+        drawText("Caché (Hold): C o Shift  |  Música: T (Pista), M (Mute), +/- (Volumen)  |  Pausa: P o Esc", px + 60, cY + 92, 2, '#f5faff');
 
-        ctx.textAlign = 'center';
-        ctx.fillStyle = '#19eb5f';
-        ctx.font = 'bold 28px "Segoe UI", sans-serif';
-        ctx.fillText("Pulsa [ESC] o [F1 / H] para volver al Menú Principal", WIN_W / 2, 880);
+        drawTextCenteredShadow("Pulsa [ESC] o [F1 / H] para volver al Menú Principal", WIN_W / 2, py + ph - 40, 3, '#19eb5f', '#060c14');
       }
 
       requestAnimationFrame(loop);
