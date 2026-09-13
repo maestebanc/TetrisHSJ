@@ -9,6 +9,16 @@ Hospital Universitario de Sant Joan d'Alacant
 3. Asegúrate de mantener "SDL2.dll" en la misma carpeta que el ejecutable.
 *(También puedes abrir "SantJoanTetris.html" en Edge o Chrome si lo prefieres).*
 
+⚠️ SI WINDOWS DICE "WINDOWS PROTEGIÓ SU PC" (SmartScreen):
+Es un aviso normal de Windows para CUALQUIER programa nuevo que no
+haya pagado un certificado de firma de código (cientos de euros al
+año) — no significa que el juego tenga virus, solo que SmartScreen
+todavía no "conoce" este ejecutable. Para abrirlo:
+1. Haz clic en "Más información" dentro del propio aviso azul.
+2. Aparecerá un botón "Ejecutar de todas formas". Púlsalo.
+(Si tu antivirus lo pone en cuarentena en vez de mostrar este aviso,
+restaura el archivo desde la cuarentena del antivirus.)
+
 📺 PANTALLA COMPLETA Y MAXIMIZAR EN WINDOWS:
 - Puedes MAXIMIZAR la ventana en Windows haciendo clic en el botón Maximizar de la barra de título, arrastrándola arriba, o pulsando F11 (o Alt+Enter) para pantalla completa. El juego se ajusta automáticamente al tamaño de la ventana sin distorsión.
 
