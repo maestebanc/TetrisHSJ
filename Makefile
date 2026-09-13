@@ -79,7 +79,7 @@ ifeq ($(UNAME_S),Darwin)
 	@# reescribir la referencia a una ruta relativa (@executable_path) para
 	@# que el .app sea de verdad autónomo, en vez de copiar a ciegas el dylib
 	@# vendorizado (que ni siquiera es el que se usó para enlazar).
-	@SDL_DYLIB=$$(otool -L SantJoanTetris.app/Contents/MacOS/SantJoanTetris | grep -o '[^ ]*libSDL2[^ ]*\.dylib' | head -1); \
+	@SDL_DYLIB=$$(otool -L SantJoanTetris.app/Contents/MacOS/SantJoanTetris | awk '/libSDL2.*\.dylib/{print $$1; exit}'); \
 	echo "Empaquetando $$SDL_DYLIB junto al ejecutable..."; \
 	cp "$$SDL_DYLIB" SantJoanTetris.app/Contents/MacOS/libSDL2-2.0.0.dylib; \
 	install_name_tool -id @executable_path/libSDL2-2.0.0.dylib SantJoanTetris.app/Contents/MacOS/libSDL2-2.0.0.dylib; \
