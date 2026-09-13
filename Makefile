@@ -23,7 +23,14 @@ HDR = src/game.h src/render.h src/audio.h src/font.h
 UNAME_S := $(shell uname -s)
 ifeq ($(UNAME_S),Darwin)
 	MAC_CC = cc
-	MAC_INCLUDES = -Isrc $(shell sdl2-config --cflags)
+	# OJO: `sdl2-config --cflags` en Homebrew da -I<prefix>/include/SDL2 (pensado
+	# para #include <SDL.h> a secas), pero el código de aquí usa #include
+	# <SDL2/SDL.h> en todas las plataformas (como en Linux/Windows). Por eso se
+	# usa el prefijo de Homebrew directamente y se apunta a .../include (el
+	# padre de SDL2/), no al que da sdl2-config, o el compilador no encuentra
+	# 'SDL2/SDL.h' (busca .../include/SDL2/SDL2/SDL.h, duplicado).
+	MAC_SDL_PREFIX = $(shell brew --prefix sdl2 2>/dev/null)
+	MAC_INCLUDES = -Isrc -I$(MAC_SDL_PREFIX)/include
 	MAC_LIBS = $(shell sdl2-config --libs) -lm
 	MAC_FLAGS = -Wall -Wextra -O2
 else

@@ -99,8 +99,14 @@ jobs:
 
       - name: Comprobar que la página carga sin errores de consola
         run: |
-          npm install -g playwright-chromium http-server >/dev/null 2>&1 || npm install -g http-server
-          npx --yes http-server -p 8080 . &
+          # Instalación LOCAL (no -g): el runner no tiene permiso de escritura
+          # en las carpetas globales de npm (falla con EACCES al crear la
+          # página de manual de http-server), y no hace falta instalar global
+          # para este uso puntual.
+          mkdir -p /tmp/web-smoke-test && cd /tmp/web-smoke-test
+          npm init -y >/dev/null 2>&1
+          npm install --no-save playwright-chromium http-server >/dev/null 2>&1
+          npx http-server -p 8080 "$GITHUB_WORKSPACE" &
           sleep 2
           node -e "
             const { chromium } = require('playwright-chromium');
