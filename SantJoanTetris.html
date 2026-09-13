@@ -400,7 +400,38 @@
       if (audioCtx.state === 'suspended') {
         audioCtx.resume();
       }
+      // Safari/iOS es especialmente estricto: a veces resume() por sí solo
+      // no "desbloquea" el audio de verdad hasta que además se reproduce
+      // un buffer real dentro del mismo gesto táctil. Un buffer de un solo
+      // frame en silencio es inaudible pero fuerza ese desbloqueo real.
+      try {
+        const silentBuffer = audioCtx.createBuffer(1, 1, audioCtx.sampleRate);
+        const silentSource = audioCtx.createBufferSource();
+        silentSource.buffer = silentBuffer;
+        silentSource.connect(audioCtx.destination);
+        silentSource.start(0);
+      } catch (e) {}
     }
+
+    // iOS suspende el AudioContext al bloquear la pantalla o cambiar de
+    // pestaña/app, y no siempre se reanuda solo al volver. Se reintenta
+    // en cuanto la página vuelve a ser visible.
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'visible' && audioCtx && audioCtx.state === 'suspended') {
+        audioCtx.resume();
+      }
+    });
+
+    // Red de seguridad extra para iOS: algunas versiones de Safari solo
+    // consideran "gesto de usuario" válido para desbloquear audio el
+    // primer touchend de la página, no el touchstart de un botón concreto
+    // (que puede llegar tras un pequeño retraso interno de Safari). Se
+    // engancha una sola vez al primer toque, sin interferir con los
+    // controles táctiles del juego.
+    document.addEventListener('touchend', function unlockAudioOnce() {
+      initAudio();
+      document.removeEventListener('touchend', unlockAudioOnce);
+    }, { once: true, passive: true });
 
     // Efectos de sonido puntuales (no forman parte del audioProcess de
     // música: igual que en la versión nativa, silenciar la música con M

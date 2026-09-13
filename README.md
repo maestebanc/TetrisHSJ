@@ -3,9 +3,13 @@
 ### *Hospital Universitario de Sant Joan d'Alacant*
 
 *(Idea original y prompt: Miguel Ángel Esteban - aka MA - 2026)*
-*(Desarrollo y mejoras de la versión 1.0.2 asistidos con Claude, Anthropic - 2026)*
+*(Desarrollo y mejoras de la versión 1.0.3 asistidos con Claude, Anthropic - 2026)*
 
 Un juego de Tetris ambientado en el día a día (y la noche a noche) del equipo de **Informáticos de Guardia** del Hospital Universitario de Sant Joan d'Alacant (**Jose María, Marichu, Diego y Ernesto**). Disponible para Linux, Windows, Mac, y directamente en el navegador (incluido móvil/tablet).
+
+## Novedades de la versión 1.0.3
+
+* **Arreglado el sonido en iPhone/Safari (versión Web):** Safari en iOS es especialmente estricto desbloqueando el audio — no basta con reanudar el `AudioContext`, hace falta además reproducir un sonido real (aunque sea silencioso) dentro del mismo toque del usuario. Se añade ese desbloqueo, más una red de seguridad en el primer toque de la página y una reanudación automática al volver de segundo plano (bloqueo de pantalla, cambio de app).
 
 ## Novedades de la versión 1.0.2
 
