@@ -1,0 +1,41 @@
+🏥 SANT JOAN TETRIS - EDICIÓN HOSPITAL UNIVERSITARIO
+=====================================================
+Versión nativa para Linux (x86_64)
+Unidad de Informática y Tecnologías de la Información (TIC)
+Hospital Universitario de Sant Joan d'Alacant
+
+🎮 CÓMO JUGAR EN LINUX:
+-----------------------------------------------------
+1. Descomprime este archivo.
+2. Da permisos de ejecución si hace falta: chmod +x sant_joan_tetris
+3. Ejecuta:
+   ./sant_joan_tetris
+   # o bien:
+   ./run.sh
+
+Requiere SDL2 instalado en el sistema (paquete `sdl2` / `libsdl2-2.0-0`
+según tu distribución).
+
+🕹️ CONTROLES DEL TURNO DE GUARDIA:
+- Flechas ← / → o teclas A / D : Mover pieza lateralmente
+- Flecha ↑ o W : Rotar en sentido horario (CW)
+- Z o Q : Rotar en sentido antihorario (CCW)
+- Flecha ↓ o S : Caída suave (Soft Drop)
+- Barra Espaciadora : Caída instantánea (Hard Drop)
+- C o Shift : Guardar en memoria Caché (Hold)
+- F11 o Alt+Enter : Pantalla completa / Maximizar
+- T : Cambiar pista musical temática
+- M : Silenciar / Activar música
+- + / - : Subir / Bajar volumen
+- P o Esc : Pausar / Reanudar turno (Pausa para café)
+- F1 o H : Manual de supervivencia del informático de guardia
+- F12 : Guardar captura de pantalla (screenshot_*.bmp)
+- R : Reiniciar guardia
+
+💡 REGLAS DE ORO DEL INFORMÁTICO DE SANT JOAN:
+1. "¿Ha probado a apagarlo y volverlo a encender?" (soluciona el 90% de las incidencias).
+2. Si un usuario jura que no tocó nada, ha desenchufado medio rack.
+3. La cafetera del CPD de Urgencias es infraestructura crítica.
+
+(Concepto original y prompt: Miguel Ángel Esteban - aka MA - 2026).
+(Rediseño y desarrollo asistido con Claude, Anthropic - 2026).

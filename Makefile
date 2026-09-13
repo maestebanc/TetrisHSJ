@@ -123,9 +123,13 @@ package-web: SantJoanTetris.html
 	rm -f SantJoanTetris_Web.zip
 	zip -j SantJoanTetris_Web.zip SantJoanTetris.html LEEME_WEB.txt
 
-package-all: package-windows package-mac package-web
+package-linux: sant_joan_tetris
+	rm -f SantJoanTetris_Linux.tar.gz
+	tar -czf SantJoanTetris_Linux.tar.gz sant_joan_tetris run.sh LEEME_LINUX.txt assets/
+
+package-all: package-linux package-windows package-mac package-web
 
 clean:
-	rm -rf sant_joan_tetris SantJoanTetris.exe SantJoanTetris_Windows.zip manifest.res.o sant_joan_tetris_mac SantJoanTetris.app SantJoanTetris_macOS_Silicon.zip SantJoanTetris_Web.zip
+	rm -rf sant_joan_tetris SantJoanTetris.exe SantJoanTetris_Windows.zip manifest.res.o sant_joan_tetris_mac SantJoanTetris.app SantJoanTetris_macOS_Silicon.zip SantJoanTetris_Web.zip SantJoanTetris_Linux.tar.gz
 
-.PHONY: all windows linux mac mac-app package-windows package-mac package-web package-all clean
+.PHONY: all windows linux mac mac-app package-windows package-mac package-web package-linux package-all clean

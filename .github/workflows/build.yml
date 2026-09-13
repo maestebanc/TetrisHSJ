@@ -38,14 +38,13 @@ jobs:
           xvfb-run -a ./sant_joan_tetris --generate-screenshots
           test -f docs/screenshots/gameplay.bmp
 
+      - name: Empaquetar
+        run: make package-linux
+
       - uses: actions/upload-artifact@v4
         with:
           name: SantJoanTetris-Linux
-          path: |
-            sant_joan_tetris
-            run.sh
-            assets/
-            README.md
+          path: SantJoanTetris_Linux.tar.gz
 
   windows:
     name: Windows (cross-compilado con zig)
