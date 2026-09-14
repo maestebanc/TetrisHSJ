@@ -17,12 +17,16 @@ modules:
   # SDL2 no está en flathub/shared-modules (que solo trae SDL2_image /
   # SDL2_mixer / SDL2_ttf), así que se construye aquí desde el tarball
   # oficial de la release, con el sha256 comprobado a mano.
+  # SDL2 2.3x rechaza compilar "in-tree" (mismo directorio de origen y de
+  # build) con un error fatal propio en su CMakeLists.txt. El buildsystem
+  # "cmake-ninja" de flatpak-builder no evita esto aquí, así que se invoca
+  # cmake a mano con -S/-B apuntando a un subdirectorio de build aparte.
   - name: SDL2
-    buildsystem: cmake-ninja
-    config-opts:
-      - -DSDL_SHARED=ON
-      - -DSDL_STATIC=OFF
-      - -DSDL_TEST=OFF
+    buildsystem: simple
+    build-commands:
+      - cmake -S . -B _flatpak_build -G Ninja -DCMAKE_INSTALL_PREFIX=/app -DSDL_SHARED=ON -DSDL_STATIC=OFF -DSDL_TEST=OFF
+      - ninja -C _flatpak_build
+      - ninja -C _flatpak_build install
     sources:
       - type: archive
         url: https://github.com/libsdl-org/SDL/releases/download/release-2.32.10/SDL2-2.32.10.tar.gz
