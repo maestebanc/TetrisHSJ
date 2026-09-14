@@ -1,0 +1,10 @@
+[Desktop Entry]
+Type=Application
+Name=Sant Joan Tetris
+GenericName=Juego de Tetris Hospital de Sant Joan
+Comment=Tetris para la Unidad de Informática y TIC del Hospital de Sant Joan d'Alacant. Idea original y prompt: Miguel Ángel Esteban (aka MA - 2026).
+Exec=sant_joan_tetris
+Icon=io.github.maestebanc.SantJoanTetris
+Terminal=false
+Categories=Game;ArcadeGame;
+Keywords=tetris;sant joan;hospital;juego;tic;

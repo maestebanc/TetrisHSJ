@@ -1,0 +1,48 @@
+app-id: io.github.maestebanc.SantJoanTetris
+runtime: org.freedesktop.Platform
+runtime-version: '23.08'
+sdk: org.freedesktop.Sdk
+command: sant_joan_tetris
+
+# Acceso mínimo para una ventana SDL2 con audio: pantalla (X11/Wayland) y
+# sonido (PulseAudio/PipeWire vía el socket de compatibilidad pulse). El
+# juego no necesita red, ni acceso al resto del sistema de archivos.
+finish-args:
+  - --socket=fallback-x11
+  - --socket=wayland
+  - --share=ipc
+  - --socket=pulseaudio
+
+modules:
+  # SDL2 no está en flathub/shared-modules (que solo trae SDL2_image /
+  # SDL2_mixer / SDL2_ttf), así que se construye aquí desde el tarball
+  # oficial de la release, con el sha256 comprobado a mano.
+  - name: SDL2
+    buildsystem: cmake-ninja
+    config-opts:
+      - -DSDL_SHARED=ON
+      - -DSDL_STATIC=OFF
+      - -DSDL_TEST=OFF
+    sources:
+      - type: archive
+        url: https://github.com/libsdl-org/SDL/releases/download/release-2.32.10/SDL2-2.32.10.tar.gz
+        sha256: 5f5993c530f084535c65a6879e9b26ad441169b3e25d789d83287040a9ca5165
+
+  - name: santjoantetris
+    buildsystem: simple
+    build-commands:
+      - make linux CC=gcc CFLAGS="-O2 -Wall -Wextra -Isrc"
+      - install -Dm755 sant_joan_tetris /app/bin/sant_joan_tetris
+      - install -Dm644 packaging/flatpak/io.github.maestebanc.SantJoanTetris.desktop /app/share/applications/io.github.maestebanc.SantJoanTetris.desktop
+      - install -Dm644 assets/ma_tetris.png /app/share/icons/hicolor/256x256/apps/io.github.maestebanc.SantJoanTetris.png
+      - install -Dm644 assets/ma_tetris.svg /app/share/icons/hicolor/scalable/apps/io.github.maestebanc.SantJoanTetris.svg
+      - install -Dm644 assets/icon.bmp /app/share/sant-joan-tetris/assets/icon.bmp
+      - install -Dm644 LICENSE /app/share/doc/santjoantetris/LICENSE
+    sources:
+      - type: dir
+        path: ../..
+        skip:
+          - .git
+          - mac_sdk
+          - win_sdk
+          - docs

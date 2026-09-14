@@ -46,6 +46,64 @@ jobs:
           name: SantJoanTetris-Linux
           path: SantJoanTetris_Linux.tar.gz
 
+      - name: Instalar fpm (genera .deb y .rpm desde el mismo árbol FHS)
+        run: |
+          sudo apt-get install -y ruby ruby-dev build-essential rpm
+          sudo gem install --no-document fpm
+
+      - name: Empaquetar .deb y .rpm
+        run: |
+          make package-deb
+          make package-rpm
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: SantJoanTetris-deb
+          path: santjoantetris_*.deb
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: SantJoanTetris-rpm
+          path: santjoantetris-*.rpm
+
+  flatpak:
+    name: Flatpak (bundle standalone)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Instalar flatpak y flatpak-builder
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y flatpak flatpak-builder xvfb
+          flatpak remote-add --user --if-not-exists flathub https://flathub.org/repo/flathub.flatpakrepo
+
+      - name: Instalar runtime y SDK de freedesktop (23.08)
+        run: flatpak install --user -y flathub org.freedesktop.Platform//23.08 org.freedesktop.Sdk//23.08
+
+      - name: Construir el Flatpak (compila SDL2 desde cero + el juego)
+        run: flatpak-builder --user --force-clean --repo=flatpak-repo build-dir packaging/flatpak/io.github.maestebanc.SantJoanTetris.yml
+
+      - name: Empaquetar como .flatpak descargable (bundle standalone, sin pasar por Flathub)
+        run: flatpak build-bundle flatpak-repo SantJoanTetris.flatpak io.github.maestebanc.SantJoanTetris
+
+      - name: Comprobación básica (arranca bajo Xvfb sin errores)
+        run: |
+          flatpak install --user -y ./SantJoanTetris.flatpak
+          set +e
+          xvfb-run -a timeout 5 flatpak run io.github.maestebanc.SantJoanTetris
+          code=$?
+          set -e
+          if [ "$code" -ne 124 ] && [ "$code" -ne 0 ]; then
+            echo "Fallo al arrancar el Flatpak (código $code)"
+            exit 1
+          fi
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: SantJoanTetris-Flatpak
+          path: SantJoanTetris.flatpak
+
   windows:
     name: Windows (cross-compilado con zig)
     runs-on: ubuntu-latest

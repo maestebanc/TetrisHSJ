@@ -6,6 +6,25 @@ Hospital Universitario de Sant Joan d'Alacant
 
 🎮 CÓMO JUGAR EN LINUX:
 -----------------------------------------------------
+Hay varias formas de instalarlo, elige la que prefieras:
+
+▸ .deb (Debian, Ubuntu y derivadas):
+   sudo apt install ./santjoantetris_*.deb
+   (o doble clic en el .deb desde el gestor de archivos)
+
+▸ .rpm (Fedora, openSUSE y derivadas):
+   sudo dnf install ./santjoantetris-*.rpm
+   # openSUSE: sudo zypper install ./santjoantetris-*.rpm
+
+▸ Flatpak (cualquier distribución):
+   flatpak install --user ./SantJoanTetris.flatpak
+   flatpak run io.github.maestebanc.SantJoanTetris
+
+Los tres anteriores añaden "Sant Joan Tetris" al menú de aplicaciones
+con su icono, y ya llevan SDL2 resuelto (el .deb/.rpm lo declaran como
+dependencia; el Flatpak lo lleva incluido en su sandbox).
+
+▸ Binario suelto (sin instalar nada, portable):
 1. Descomprime este archivo.
 2. Da permisos de ejecución si hace falta: chmod +x sant_joan_tetris
 3. Ejecuta:

@@ -94,6 +94,10 @@ int main(int argc, char *argv[]) {
     SDL_Surface *icon = SDL_LoadBMP("assets/icon.bmp");
     if (!icon) icon = SDL_LoadBMP("icon.bmp");
     if (!icon) icon = SDL_LoadBMP("../Resources/assets/icon.bmp");
+    // Instalación en sistema vía .deb/.rpm (usr/bin + usr/share/sant-joan-tetris/assets)
+    if (!icon) icon = SDL_LoadBMP("/usr/share/sant-joan-tetris/assets/icon.bmp");
+    // Instalación vía Flatpak (sandbox bajo /app)
+    if (!icon) icon = SDL_LoadBMP("/app/share/sant-joan-tetris/assets/icon.bmp");
     if (icon) {
         SDL_SetWindowIcon(window, icon);
         SDL_FreeSurface(icon);

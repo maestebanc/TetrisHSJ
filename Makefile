@@ -127,9 +127,68 @@ package-linux: sant_joan_tetris
 	rm -f SantJoanTetris_Linux.tar.gz
 	tar -czf SantJoanTetris_Linux.tar.gz sant_joan_tetris run.sh LEEME_LINUX.txt assets/
 
+PKG_VERSION = 1.0.4
+LINUX_STAGE = linux_pkg_stage
+
+# Árbol de instalación FHS (usr/bin, usr/share/...) compartido por los
+# targets package-deb y package-rpm, para no duplicar rutas entre ambos.
+# El único archivo que el binario carga en tiempo de ejecución desde disco
+# es el icono de ventana (assets/icon.bmp); todo lo demás (fuente, audio)
+# está embebido en el propio ejecutable, así que instalar bien esa única
+# ruta (ver los candidatos añadidos en main.c) es lo único que hace falta.
+stage-linux-files: linux
+	rm -rf $(LINUX_STAGE)
+	mkdir -p $(LINUX_STAGE)/usr/bin
+	mkdir -p $(LINUX_STAGE)/usr/share/applications
+	mkdir -p $(LINUX_STAGE)/usr/share/pixmaps
+	mkdir -p $(LINUX_STAGE)/usr/share/icons/hicolor/256x256/apps
+	mkdir -p $(LINUX_STAGE)/usr/share/icons/hicolor/scalable/apps
+	mkdir -p $(LINUX_STAGE)/usr/share/sant-joan-tetris/assets
+	mkdir -p $(LINUX_STAGE)/usr/share/doc/santjoantetris
+	cp sant_joan_tetris $(LINUX_STAGE)/usr/bin/
+	cp sant_joan_tetris.desktop $(LINUX_STAGE)/usr/share/applications/
+	cp assets/ma_tetris.png $(LINUX_STAGE)/usr/share/pixmaps/
+	cp assets/ma_tetris.png $(LINUX_STAGE)/usr/share/icons/hicolor/256x256/apps/
+	cp assets/ma_tetris.svg $(LINUX_STAGE)/usr/share/icons/hicolor/scalable/apps/
+	cp assets/icon.bmp $(LINUX_STAGE)/usr/share/sant-joan-tetris/assets/
+	cp LICENSE $(LINUX_STAGE)/usr/share/doc/santjoantetris/
+
+# .deb y .rpm se generan con fpm (https://github.com/jordansissel/fpm), que
+# construye ambos formatos desde el mismo árbol ya en rutas FHS, sin tener
+# que mantener a mano un debian/control y un .spec de rpm por separado.
+# Requiere el gem "fpm" instalado (y dpkg-deb / rpmbuild según el formato);
+# no forma parte de "package-all" porque este equipo de desarrollo (Arch)
+# no lleva esas herramientas — se ejecuta en el job de Linux de la CI
+# (ubuntu-latest), que sí las tiene.
+package-deb: stage-linux-files
+	rm -f santjoantetris_$(PKG_VERSION)_amd64.deb
+	fpm -s dir -t deb \
+	  -n santjoantetris -v $(PKG_VERSION) \
+	  --license MIT \
+	  --category games \
+	  --url "https://github.com/maestebanc/TetrisHSJ" \
+	  --maintainer "Miguel Angel Esteban <maestebanc@gmail.com>" \
+	  --description "Tetris tematizado del Hospital Universitario de Sant Joan d'Alacant, ambientado en el equipo de Informaticos de Guardia." \
+	  --depends libsdl2-2.0-0 \
+	  -C $(LINUX_STAGE) -p santjoantetris_$(PKG_VERSION)_amd64.deb \
+	  usr
+
+package-rpm: stage-linux-files
+	rm -f santjoantetris-$(PKG_VERSION)-1.x86_64.rpm
+	fpm -s dir -t rpm \
+	  -n santjoantetris -v $(PKG_VERSION) \
+	  --license MIT \
+	  --category games \
+	  --url "https://github.com/maestebanc/TetrisHSJ" \
+	  --maintainer "Miguel Angel Esteban <maestebanc@gmail.com>" \
+	  --description "Tetris tematizado del Hospital Universitario de Sant Joan d'Alacant, ambientado en el equipo de Informaticos de Guardia." \
+	  --depends SDL2 \
+	  -C $(LINUX_STAGE) -p santjoantetris-$(PKG_VERSION)-1.x86_64.rpm \
+	  usr
+
 package-all: package-linux package-windows package-mac package-web
 
 clean:
-	rm -rf sant_joan_tetris SantJoanTetris.exe SantJoanTetris_Windows.zip manifest.res.o sant_joan_tetris_mac SantJoanTetris.app SantJoanTetris_macOS_Silicon.zip SantJoanTetris_Web.zip SantJoanTetris_Linux.tar.gz
+	rm -rf sant_joan_tetris SantJoanTetris.exe SantJoanTetris_Windows.zip manifest.res.o sant_joan_tetris_mac SantJoanTetris.app SantJoanTetris_macOS_Silicon.zip SantJoanTetris_Web.zip SantJoanTetris_Linux.tar.gz $(LINUX_STAGE) *.deb *.rpm
 
-.PHONY: all windows linux mac mac-app package-windows package-mac package-web package-linux package-all clean
+.PHONY: all windows linux mac mac-app package-windows package-mac package-web package-linux stage-linux-files package-deb package-rpm package-all clean

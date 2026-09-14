@@ -3,9 +3,14 @@
 ### *Hospital Universitario de Sant Joan d'Alacant*
 
 *(Idea original y prompt: Miguel Ángel Esteban - aka MA - 2026)*
-*(Desarrollo y mejoras de la versión 1.0.3 asistidos con Claude, Anthropic - 2026)*
+*(Desarrollo y mejoras de la versión 1.0.4 asistidos con Claude, Anthropic - 2026)*
 
-Un juego de Tetris ambientado en el día a día (y la noche a noche) del equipo de **Informáticos de Guardia** del Hospital Universitario de Sant Joan d'Alacant (**Jose María, Marichu, Diego y Ernesto**). Disponible para Linux, Windows, Mac, y directamente en el navegador (incluido móvil/tablet).
+Un juego de Tetris ambientado en el día a día (y la noche a noche) del equipo de **Informáticos de Guardia** del Hospital Universitario de Sant Joan d'Alacant (**Jose María, Marichu, Diego y Ernesto**). Disponible para Linux (binario, `.deb`, `.rpm` y Flatpak), Windows, Mac, y directamente en el navegador (incluido móvil/tablet).
+
+## Novedades de la versión 1.0.4
+
+* **Nuevos paquetes de Linux**: además del `.tar.gz` portable, ahora hay `.deb` (Debian/Ubuntu), `.rpm` (Fedora/openSUSE) y un **Flatpak** instalable en cualquier distribución — los tres añaden el juego al menú de aplicaciones con su icono.
+* Se añadió una licencia MIT al proyecto.
 
 ## Novedades de la versión 1.0.3
 
